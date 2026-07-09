@@ -2,7 +2,7 @@
 
 # langchain-with-claude-cli
 
-Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangChain ecosystem components, providing three backend integration approaches. Give your LangChain/LangGraph applications full filesystem, shell, and git capabilities.
+Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangChain ecosystem components, providing three backend integration approaches plus a deep agent orchestration layer. Give your LangChain/LangGraph applications full filesystem, shell, and git capabilities.
 
 ## Table of Contents
 
@@ -11,6 +11,7 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
   - [Backend 1: ChatModel — `ChatClaudeCode`](#backend-1-chatmodel--chatclaudecode)
   - [Backend 2: Tool — `claude_code` Series](#backend-2-tool--claude_code-series)
   - [Backend 3: Skill — `claude-code-cli`](#backend-3-skill--claude-code-cli)
+- [Deep Agent Integration](#deep-agent-integration)
 - [vs `deep_agent`](#vs-deep_agent)
 - [Complete Workflow Examples](#complete-workflow-examples)
 - [Configuration Reference](#configuration-reference)
@@ -32,6 +33,9 @@ pip install -e .
 
 # With Agent support
 pip install -e ".[agents]"
+
+# With deep agent integration
+pip install -e ".[deepagent]"
 
 # With examples
 pip install -e ".[examples]"
@@ -244,6 +248,64 @@ result = llm.invoke("Analyze the project architecture")
 
 ---
 
+## Deep Agent Integration
+
+The `deep_agent` module combines LangChain's [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) orchestration framework with Claude Code CLI execution. `deep_agent` handles planning, task decomposition, and sub-agent scheduling, while Claude Code handles file operations, code analysis, and shell commands.
+
+### Preset Modes
+
+| Mode | Description | Claude Code Tools |
+|------|-------------|-------------------|
+| `code_analysis` | Read-only analysis (default) | `claude_code`, `claude_code_structured` |
+| `code_refactor` | Read/write + git operations | `claude_code`, `claude_code_structured` |
+| `full_access` | Unrestricted + isolated execution | `claude_code`, `claude_code_structured`, `claude_code_isolated` |
+| `none` | Pure deep_agent, no Claude Code tools | — |
+
+### Usage
+
+```python
+from deep_agent import create_claude_deep_agent
+
+# Pattern A: Standard LLM orchestrates, Claude Code executes (recommended)
+agent = create_claude_deep_agent(model="claude-sonnet-4-6", mode="code_analysis")
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "Analyze the project architecture"}]
+})
+
+# Pattern B: ChatClaudeCode as the LLM backend
+from chat_claude_code import ChatClaudeCode
+agent = create_claude_deep_agent(
+    model=ChatClaudeCode(working_dir=".", effort="high"),
+    mode="none",
+)
+
+# Shortcut functions
+from deep_agent import create_code_analysis_agent, create_code_refactor_agent
+agent = create_code_refactor_agent(model="claude-sonnet-4-6")
+
+# Streaming
+for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
+    print(chunk.content, end="", flush=True)
+
+# Custom configuration
+agent = create_claude_deep_agent(
+    model="claude-sonnet-4-6",
+    mode="code_refactor",
+    claude_tool_effort="high",
+    claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
+)
+```
+
+Install with the `deepagent` extra:
+
+```bash
+pip install -e ".[deepagent]"
+```
+
+Functions: `create_claude_deep_agent()`, `create_code_analysis_agent()`, `create_code_refactor_agent()`, `create_full_access_agent()`
+
+---
+
 ## vs `deep_agent`
 
 Both `langchain-with-claude-cli` and LangChain's [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) let you build powerful agents, but they serve fundamentally different needs:
@@ -262,7 +324,7 @@ Both `langchain-with-claude-cli` and LangChain's [`deep_agent`](https://docs.lan
 
 - Use **`deep_agent`** when your task is reasoning-heavy — research synthesis, multi-hop Q&A, web scraping, or agent orchestration with planning/todo lists.
 - Use **`ChatClaudeCode`** when your task needs real code execution — analyzing a codebase, refactoring across files, running shell commands, or managing a git workflow.
-- **Combine both**: use `deep_agent` as the orchestrator that delegates code-heavy subtasks to `ChatClaudeCode` via its tool interface.
+- **Combine both**: use `create_claude_deep_agent()` (see [Deep Agent Integration](#deep-agent-integration) above) to get `deep_agent` orchestration with Claude Code execution in a single function call.
 
 ---
 
@@ -349,6 +411,22 @@ python examples/example_chat_model.py
 | `context_files` | `claude_code_isolated` | Authorized file/directory paths |
 | `effort` | All (except streaming) | Effort level: `low` / `medium` / `high` |
 
+### create_claude_deep_agent Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model` | `str \| BaseChatModel \| None` | `"claude-sonnet-4-6"` | LLM backend — string, `ChatClaudeCode`, or any `BaseChatModel` |
+| `mode` | `str` | `"code_analysis"` | Preset mode: `code_analysis` / `code_refactor` / `full_access` / `none` |
+| `tools` | `Sequence \| None` | `None` | Additional LangChain tools merged with Claude Code tools |
+| `claude_tool_effort` | `str \| None` | per mode | Override effort: `low` / `medium` / `high` / `xhigh` / `max` |
+| `claude_tool_allowed` | `list[str] \| None` | per mode | Override allowed tools for `claude_code` |
+| `system_prompt` | `str \| None` | auto-generated | Custom system prompt |
+| `permissions` | `list \| None` | `None` | Filesystem permission rules |
+| `backend` | `Any \| None` | `None` | deep_agent backend (storage/sandbox) |
+| `subagents` | `Sequence \| None` | `None` | Additional sub-agent specs |
+| `skills` | `list[str] \| None` | `None` | Skill source paths |
+| `memory` | `list[str] \| None` | `None` | Memory file paths |
+
 ---
 
 ## Project Structure
@@ -357,6 +435,7 @@ python examples/example_chat_model.py
 langchain-with-claude-cli/
 ├── chat_claude_code.py         # Backend 1: ChatClaudeCode — BaseChatModel subclass
 ├── claude_code_tool.py         # Backend 2: claude_code series — @tool wrappers
+├── deep_agent.py               # Deep Agent: deep_agent orchestration + Claude Code tools
 ├── pyproject.toml              # Project config & dependencies
 ├── agents/                     # LangGraph agent implementations
 │   ├── code_analysis_agent.py  #   Three-stage code analysis pipeline
@@ -364,6 +443,9 @@ langchain-with-claude-cli/
 ├── examples/                   # Standalone example scripts
 │   ├── example_chat_model.py   #   ChatClaudeCode: 7 usage patterns
 │   └── example_tool.py         #   Tool delegation: 4 patterns
+├── tests/                      # Test suite (141 cases)
+│   ├── test_chat_claude_code.py
+│   └── test_claude_code_tool.py
 └── .claude/skills/             # Backend 3: Claude Code skill system
     └── claude-code-cli/        #   Skill definition + symlinks
 ```

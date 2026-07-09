@@ -2,7 +2,7 @@
 
 # langchain-with-claude-cli
 
-将 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 包装为 LangChain 生态组件，提供三种后端集成方式，让 LangChain/LangGraph 应用获得 Claude Code 的完整文件系统、shell、git 操作能力。
+将 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 包装为 LangChain 生态组件，提供三种后端集成方式加 Deep Agent 编排层，让 LangChain/LangGraph 应用获得 Claude Code 的完整文件系统、shell、git 操作能力。
 
 ## 目录
 
@@ -11,6 +11,7 @@
   - [后端 1: ChatModel — `ChatClaudeCode`](#后端-1-chatmodel--chatclaudecode)
   - [后端 2: Tool — `claude_code` 系列](#后端-2-tool--claude_code-系列)
   - [后端 3: Skill — `claude-code-cli`](#后端-3-skill--claude-code-cli)
+- [Deep Agent 集成](#deep-agent-集成)
 - [vs `deep_agent`](#vs-deep_agent)
 - [完整工作流示例](#完整工作流示例)
 - [配置参数参考](#配置参数参考)
@@ -32,6 +33,9 @@ pip install -e .
 
 # 使用 Agent 功能
 pip install -e ".[agents]"
+
+# 使用 Deep Agent 集成
+pip install -e ".[deepagent]"
 
 # 运行示例
 pip install -e ".[examples]"
@@ -244,6 +248,64 @@ result = llm.invoke("分析这个项目的架构")
 
 ---
 
+## Deep Agent 集成
+
+`deep_agent` 模块将 LangChain 的 [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) 编排框架与 Claude Code CLI 执行能力结合。`deep_agent` 负责任务规划、拆解、子 agent 调度；Claude Code 负责文件操作、代码分析、shell 命令。
+
+### 预设模式
+
+| 模式 | 说明 | Claude Code 工具 |
+|------|------|-------------------|
+| `code_analysis` | 只读分析（默认） | `claude_code`, `claude_code_structured` |
+| `code_refactor` | 读写 + git 操作 | `claude_code`, `claude_code_structured` |
+| `full_access` | 无限制 + 隔离执行 | `claude_code`, `claude_code_structured`, `claude_code_isolated` |
+| `none` | 纯 deep_agent，不注册 Claude Code 工具 | — |
+
+### 用法
+
+```python
+from deep_agent import create_claude_deep_agent
+
+# 模式 A：标准 LLM 编排 + Claude Code 工具执行（推荐）
+agent = create_claude_deep_agent(model="claude-sonnet-4-6", mode="code_analysis")
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "分析项目架构"}]
+})
+
+# 模式 B：ChatClaudeCode 作为 LLM 后端
+from chat_claude_code import ChatClaudeCode
+agent = create_claude_deep_agent(
+    model=ChatClaudeCode(working_dir=".", effort="high"),
+    mode="none",
+)
+
+# 快捷函数
+from deep_agent import create_code_analysis_agent, create_code_refactor_agent
+agent = create_code_refactor_agent(model="claude-sonnet-4-6")
+
+# 流式调用
+for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
+    print(chunk.content, end="", flush=True)
+
+# 自定义配置
+agent = create_claude_deep_agent(
+    model="claude-sonnet-4-6",
+    mode="code_refactor",
+    claude_tool_effort="high",
+    claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
+)
+```
+
+安装 `deepagent` extra：
+
+```bash
+pip install -e ".[deepagent]"
+```
+
+函数：`create_claude_deep_agent()`、`create_code_analysis_agent()`、`create_code_refactor_agent()`、`create_full_access_agent()`
+
+---
+
 ## vs `deep_agent`
 
 `langchain-with-claude-cli` 和 LangChain 的 [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) 都能构建强大的 Agent，但定位完全不同：
@@ -262,7 +324,7 @@ result = llm.invoke("分析这个项目的架构")
 
 - 用 **`deep_agent`** — 推理密集型任务：研究综述、多跳 Q&A、网页抓取、带规划/todo 的 Agent 编排。
 - 用 **`ChatClaudeCode`** — 需要真实代码执行：分析代码库、跨文件重构、执行 shell 命令、管理 git 工作流。
-- **组合使用** — 用 `deep_agent` 做编排器，将代码密集型子任务通过 tool 接口委托给 `ChatClaudeCode`。
+- **组合使用** — 用 `create_claude_deep_agent()`（见上方 [Deep Agent 集成](#deep-agent-集成)）一行代码同时获得 `deep_agent` 编排和 Claude Code 执行能力。
 
 ---
 
@@ -349,6 +411,22 @@ python examples/example_chat_model.py
 | `context_files` | 授权文件列表（仅 `claude_code_isolated`） |
 | `effort` | 努力级别：`low` / `medium` / `high` |
 
+### create_claude_deep_agent 参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `model` | `str \| BaseChatModel \| None` | `"claude-sonnet-4-6"` | LLM 后端，支持字符串或 `ChatClaudeCode` 实例 |
+| `mode` | `str` | `"code_analysis"` | 预设模式：`code_analysis` / `code_refactor` / `full_access` / `none` |
+| `tools` | `Sequence \| None` | `None` | 额外的 LangChain 工具，与 Claude Code 工具合并 |
+| `claude_tool_effort` | `str \| None` | 按 mode | 覆盖 effort 级别：`low` / `medium` / `high` / `xhigh` / `max` |
+| `claude_tool_allowed` | `list[str] \| None` | 按 mode | 覆盖 `claude_code` 的允许工具列表 |
+| `system_prompt` | `str \| None` | 自动生成 | 自定义系统提示词 |
+| `permissions` | `list \| None` | `None` | 文件系统权限规则 |
+| `backend` | `Any \| None` | `None` | deep_agent 后端（存储/沙箱） |
+| `subagents` | `Sequence \| None` | `None` | 额外的子 agent 定义 |
+| `skills` | `list[str] \| None` | `None` | 技能文件路径 |
+| `memory` | `list[str] \| None` | `None` | 记忆文件路径 |
+
 ---
 
 ## 项目结构
@@ -357,6 +435,7 @@ python examples/example_chat_model.py
 langchain-with-claude-cli/
 ├── chat_claude_code.py         # 后端 1: ChatClaudeCode — BaseChatModel 子类
 ├── claude_code_tool.py         # 后端 2: claude_code 系列 — @tool 封装
+├── deep_agent.py               # Deep Agent: deep_agent 编排 + Claude Code 工具
 ├── pyproject.toml              # 项目配置与依赖声明
 ├── agents/                     # LangGraph Agent 实现
 │   ├── code_analysis_agent.py  #   三阶段代码分析流水线
@@ -364,6 +443,9 @@ langchain-with-claude-cli/
 ├── examples/                   # 独立示例脚本
 │   ├── example_chat_model.py   #   ChatClaudeCode 7 种使用模式
 │   └── example_tool.py         #   Tool 委托 4 种用法
+├── tests/                      # 测试套件（141 个用例）
+│   ├── test_chat_claude_code.py
+│   └── test_claude_code_tool.py
 └── .claude/skills/             # 后端 3: Claude Code skill 系统
     └── claude-code-cli/        #   skill 定义 + 符号链接
 ```
