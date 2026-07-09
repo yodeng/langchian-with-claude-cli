@@ -1,0 +1,40 @@
+[project]
+name = "langchain-cc"
+version = "0.1.0"
+description = "Claude Code CLI as LangChain ChatModel and Tool components"
+readme = "CLAUDE.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "yodeng"},
+]
+keywords = ["langchain", "claude-code", "claude", "llm", "chat-model"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "langchain-core>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+agents = [
+    "langgraph>=1.0",
+]
+examples = [
+    "langchain-anthropic>=1.0",
+    "langgraph>=1.0",
+]
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["chat_claude_code", "claude_code_tool"]

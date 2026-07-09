@@ -21,10 +21,11 @@ import json
 import logging
 import os
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.tools import tool
 
@@ -40,10 +41,10 @@ class ClaudeCodeResult:
     """Claude Code 调用结果"""
     success: bool
     output: str
-    structured: Optional[dict] = None
+    structured: dict | None = None
     stderr: str = ""
     returncode: int = 0
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 @dataclass
@@ -52,6 +53,22 @@ class ClaudeCodeSession:
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     working_dir: str = "."
     resume_count: int = 0
+    created_at: float = field(default_factory=time.time)
+    last_accessed: float = field(default_factory=time.time)
+
+    def touch(self) -> None:
+        """更新最后访问时间"""
+        self.last_accessed = time.time()
+
+    @property
+    def age_seconds(self) -> float:
+        """会话创建以来的秒数"""
+        return time.time() - self.created_at
+
+    @property
+    def idle_seconds(self) -> float:
+        """上次访问以来的空闲秒数"""
+        return time.time() - self.last_accessed
 
 
 # ═══════════════════════════════════════════
@@ -61,17 +78,17 @@ class ClaudeCodeSession:
 def _run_claude_code(
     prompt: str,
     *,
-    session: Optional[ClaudeCodeSession] = None,
+    session: ClaudeCodeSession | None = None,
     working_dir: str = ".",
-    allowed_tools: Optional[list[str]] = None,
-    json_schema: Optional[dict] = None,
-    system_prompt: Optional[str] = None,
+    allowed_tools: list[str] | None = None,
+    json_schema: dict | None = None,
+    system_prompt: str | None = None,
     effort: str = "medium",
     timeout: int = 300,
     use_worktree: bool = False,
     skip_permissions: bool = False,
-    context_files: Optional[list[str]] = None,
-    extra_env: Optional[dict[str, str]] = None,
+    context_files: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ClaudeCodeResult:
     """
     执行一次 Claude Code 调用。
@@ -221,14 +238,50 @@ def _run_claude_code(
 # 全局 session 注册表（按 session_id 索引）
 _sessions: dict[str, ClaudeCodeSession] = {}
 
+# session 生命周期配置
+_MAX_SESSIONS: int = 100
+_SESSION_IDLE_TTL: float = 3600.0  # 空闲 1 小时后过期
+_SESSION_MAX_AGE: float = 86400.0  # 最长存活 24 小时
+
+
+def _cleanup_expired_sessions() -> None:
+    """清理过期和空闲的 session"""
+    now = time.time()
+    expired = [
+        sid
+        for sid, s in _sessions.items()
+        if now - s.last_accessed > _SESSION_IDLE_TTL
+        or now - s.created_at > _SESSION_MAX_AGE
+    ]
+    for sid in expired:
+        del _sessions[sid]
+        logger.debug("清理过期 session: %s", sid)
+
+
+def _evict_oldest_sessions() -> None:
+    """超过最大数量时驱逐最旧的 session"""
+    if len(_sessions) <= _MAX_SESSIONS:
+        return
+    excess = len(_sessions) - _MAX_SESSIONS
+    oldest = sorted(_sessions.items(), key=lambda kv: kv[1].last_accessed)[:excess]
+    for sid, _ in oldest:
+        del _sessions[sid]
+        logger.debug("驱逐旧 session: %s", sid)
+
 
 def get_or_create_session(
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     working_dir: str = ".",
 ) -> ClaudeCodeSession:
-    """获取或创建 Claude Code 会话"""
+    """获取或创建 Claude Code 会话，自动清理过期和超量 session"""
     if session_id and session_id in _sessions:
-        return _sessions[session_id]
+        session = _sessions[session_id]
+        session.touch()
+        return session
+
+    _cleanup_expired_sessions()
+    _evict_oldest_sessions()
+
     session = ClaudeCodeSession(
         session_id=session_id or str(uuid.uuid4()),
         working_dir=working_dir,
@@ -241,7 +294,7 @@ def get_or_create_session(
 def delegate_to_claude_code(
     task: str,
     session_id: str = "",
-    allowed_tools: Optional[list[str]] = None,
+    allowed_tools: list[str] | None = None,
     effort: str = "medium",
 ) -> str:
     """
@@ -359,7 +412,7 @@ def delegate_to_claude_code_isolated(
 
 def delegate_to_claude_code_streaming(
     prompt: str,
-    session: Optional[ClaudeCodeSession] = None,
+    session: ClaudeCodeSession | None = None,
     working_dir: str = ".",
     timeout: int = 300,
 ) -> "subprocess.Popen[str]":

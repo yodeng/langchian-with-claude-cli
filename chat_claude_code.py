@@ -41,8 +41,7 @@ import logging
 import os
 import subprocess
 import uuid
-from copy import deepcopy
-from typing import Any, AsyncIterator, Iterator, Optional, Sequence
+from typing import Any, AsyncIterator, Iterator, Sequence
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
@@ -59,7 +58,6 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import BaseTool
-from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import Field, PrivateAttr
 
 logger = logging.getLogger(__name__)
@@ -337,8 +335,8 @@ class ChatClaudeCode(BaseChatModel):
         Returns:
             新的 ChatClaudeCode 实例（复制配置并绑定工具）
         """
-        # 使用 deepcopy 避免修改当前实例
-        new_instance = deepcopy(self)
+        # 使用 model_copy 避免修改当前实例
+        new_instance = self.model_copy(deep=True)
         new_instance._session_id = str(uuid.uuid4())
         new_instance._session_turn = 0
 
@@ -403,9 +401,7 @@ class ChatClaudeCode(BaseChatModel):
         Returns:
             新的 ChatClaudeCode 实例
         """
-        from copy import deepcopy
-
-        new_instance = deepcopy(self)
+        new_instance = self.model_copy(deep=True)
         new_instance._session_id = str(uuid.uuid4())
         new_instance._session_turn = 0
 
@@ -547,30 +543,23 @@ class ChatClaudeCode(BaseChatModel):
                 ],
                 llm_output={"error": "cli_not_found"},
             )
-
-        self._session_turn += 1
-
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout or "未知错误"
+        except OSError as e:
             return ChatResult(
                 generations=[
                     ChatGeneration(
-                        message=AIMessage(
-                            content=f"[Claude Code 错误] returncode={result.returncode}\n{error_msg}"
-                        )
+                        message=AIMessage(content=f"[错误] 无法启动 claude CLI: {e}")
                     )
                 ],
-                llm_output={"error": error_msg, "returncode": result.returncode},
+                llm_output={"error": "os_error", "detail": str(e)},
             )
 
-        parsed = _parse_json_output(result.stdout)
-        text = _extract_text_from_response(parsed)
-        usage = _extract_usage(parsed)
+        self._session_turn += 1
 
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content=text))],
-            llm_output={"usage": usage} if usage else {},
+        result_chat = _build_chat_result(
+            result.stdout, result.stderr, result.returncode
         )
+        assert result_chat is not None
+        return result_chat
 
     # ═══════════════════════════════════════════════════════════
     # 同步流式
@@ -606,6 +595,11 @@ class ChatClaudeCode(BaseChatModel):
                 message=AIMessageChunk(content="[错误] claude CLI 未安装或不在 PATH 中")
             )
             return
+        except OSError as e:
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(content=f"[错误] 无法启动 claude CLI: {e}")
+            )
+            return
 
         self._session_turn += 1
 
@@ -615,12 +609,9 @@ class ChatClaudeCode(BaseChatModel):
         try:
             for line in proc.stdout:
                 if stop and not stop_triggered:
-                    full_text = "".join(collected_text)
-                    for stop_word in stop:
-                        if stop_word in full_text:
-                            proc.terminate()
-                            stop_triggered = True
-                            break
+                    if _check_stop_words(collected_text, stop):
+                        proc.terminate()
+                        stop_triggered = True
                 if stop_triggered:
                     break
 
@@ -628,22 +619,11 @@ class ChatClaudeCode(BaseChatModel):
                 if event is None:
                     continue
 
-                if event["type"] == "text":
-                    collected_text.append(event["content"])
-                    yield ChatGenerationChunk(
-                        message=AIMessageChunk(content=event["content"])
-                    )
-                elif event["type"] == "usage":
-                    yield ChatGenerationChunk(
-                        message=AIMessageChunk(
-                            content="",
-                            usage_metadata={
-                                "input_tokens": event["input_tokens"],
-                                "output_tokens": event["output_tokens"],
-                                "total_tokens": event["total_tokens"],
-                            },
-                        )
-                    )
+                chunk = _stream_event_to_chunk(event)
+                if chunk is not None:
+                    if event["type"] == "text":
+                        collected_text.append(event["content"])
+                    yield chunk
                 # "stop" 事件自然结束，无需处理
 
         finally:
@@ -712,33 +692,24 @@ class ChatClaudeCode(BaseChatModel):
                 ],
                 llm_output={"error": "cli_not_found"},
             )
+        except OSError as e:
+            return ChatResult(
+                generations=[
+                    ChatGeneration(
+                        message=AIMessage(content=f"[错误] 无法启动 claude CLI: {e}")
+                    )
+                ],
+                llm_output={"error": "os_error", "detail": str(e)},
+            )
 
         self._session_turn += 1
 
         stdout_text = stdout.decode("utf-8") if stdout else ""
         stderr_text = stderr.decode("utf-8") if stderr else ""
 
-        if proc.returncode != 0:
-            error_msg = stderr_text or stdout_text or "未知错误"
-            return ChatResult(
-                generations=[
-                    ChatGeneration(
-                        message=AIMessage(
-                            content=f"[Claude Code 错误] returncode={proc.returncode}\n{error_msg}"
-                        )
-                    )
-                ],
-                llm_output={"error": error_msg, "returncode": proc.returncode},
-            )
-
-        parsed = _parse_json_output(stdout_text)
-        text = _extract_text_from_response(parsed)
-        usage = _extract_usage(parsed)
-
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content=text))],
-            llm_output={"usage": usage} if usage else {},
-        )
+        result_chat = _build_chat_result(stdout_text, stderr_text, proc.returncode)
+        assert result_chat is not None
+        return result_chat
 
     # ═══════════════════════════════════════════════════════════
     # 异步流式
@@ -773,6 +744,11 @@ class ChatClaudeCode(BaseChatModel):
                 message=AIMessageChunk(content="[错误] claude CLI 未安装或不在 PATH 中")
             )
             return
+        except OSError as e:
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(content=f"[错误] 无法启动 claude CLI: {e}")
+            )
+            return
 
         self._session_turn += 1
 
@@ -790,12 +766,9 @@ class ChatClaudeCode(BaseChatModel):
 
                 # 检查 stop
                 if stop and not stop_triggered:
-                    full = "".join(collected_text)
-                    for stop_word in stop:
-                        if stop_word in full:
-                            proc.terminate()
-                            stop_triggered = True
-                            break
+                    if _check_stop_words(collected_text, stop):
+                        proc.terminate()
+                        stop_triggered = True
                 if stop_triggered:
                     break
 
@@ -803,22 +776,11 @@ class ChatClaudeCode(BaseChatModel):
                 if event is None:
                     continue
 
-                if event["type"] == "text":
-                    collected_text.append(event["content"])
-                    yield ChatGenerationChunk(
-                        message=AIMessageChunk(content=event["content"])
-                    )
-                elif event["type"] == "usage":
-                    yield ChatGenerationChunk(
-                        message=AIMessageChunk(
-                            content="",
-                            usage_metadata={
-                                "input_tokens": event["input_tokens"],
-                                "output_tokens": event["output_tokens"],
-                                "total_tokens": event["total_tokens"],
-                            },
-                        )
-                    )
+                chunk = _stream_event_to_chunk(event)
+                if chunk is not None:
+                    if event["type"] == "text":
+                        collected_text.append(event["content"])
+                    yield chunk
                 # "stop" 事件自然结束，无需处理
         finally:
             # 确保进程终止，防止僵尸进程
@@ -833,6 +795,64 @@ class ChatClaudeCode(BaseChatModel):
                     pass
             except Exception:
                 logger.debug("异步进程终止时忽略异常（进程可能已退出）")
+
+
+# ═══════════════════════════════════════════════════════════════
+# ChatClaudeCode 共享辅助方法
+# ═══════════════════════════════════════════════════════════════
+
+
+def _check_stop_words(collected_text: list[str], stop_words: list[str]) -> bool:
+    """检查已收集文本是否包含停止词"""
+    full = "".join(collected_text)
+    return any(w in full for w in stop_words)
+
+
+def _stream_event_to_chunk(
+    event: dict[str, Any],
+) -> ChatGenerationChunk | None:
+    """将流式事件转换为 ChatGenerationChunk"""
+    if event["type"] == "text":
+        return ChatGenerationChunk(
+            message=AIMessageChunk(content=event["content"])
+        )
+    elif event["type"] == "usage":
+        return ChatGenerationChunk(
+            message=AIMessageChunk(
+                content="",
+                usage_metadata={
+                    "input_tokens": event["input_tokens"],
+                    "output_tokens": event["output_tokens"],
+                    "total_tokens": event["total_tokens"],
+                },
+            )
+        )
+    return None
+
+
+def _build_chat_result(stdout_text: str, stderr_text: str, returncode: int) -> ChatResult | None:
+    """从子进程输出构建 ChatResult。成功时返回 ChatResult，失败时返回 None 表示错误已由调用方处理。"""
+    if returncode != 0:
+        error_msg = stderr_text or stdout_text or "未知错误"
+        return ChatResult(
+            generations=[
+                ChatGeneration(
+                    message=AIMessage(
+                        content=f"[Claude Code 错误] returncode={returncode}\n{error_msg}"
+                    )
+                )
+            ],
+            llm_output={"error": error_msg, "returncode": returncode},
+        )
+
+    parsed = _parse_json_output(stdout_text)
+    text = _extract_text_from_response(parsed)
+    usage = _extract_usage(parsed)
+
+    return ChatResult(
+        generations=[ChatGeneration(message=AIMessage(content=text))],
+        llm_output={"usage": usage} if usage else {},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
