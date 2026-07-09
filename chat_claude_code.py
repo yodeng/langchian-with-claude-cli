@@ -260,7 +260,7 @@ class ChatClaudeCode(BaseChatModel):
         allowed_tools: 允许的工具列表，如 ["Read", "Write", "Bash(git *)"]
         disallowed_tools: 禁止的工具列表
         system_prompt: 自定义系统提示词
-        timeout: 超时秒数，默认 300
+        timeout: 超时秒数，默认 600
         skip_permissions: 跳过权限确认，默认 True（自动化场景）
         context_files: 额外授权访问的文件/目录
         extra_env: 额外的环境变量
@@ -274,7 +274,7 @@ class ChatClaudeCode(BaseChatModel):
     allowed_tools: list[str] | None = Field(default=None, description="允许的工具列表")
     disallowed_tools: list[str] | None = Field(default=None, description="禁止的工具列表")
     system_prompt: str | None = Field(default=None, description="系统提示词")
-    timeout: int = Field(default=300, ge=10, le=3600, description="超时秒数")
+    timeout: int = Field(default=600, ge=10, le=3600, description="超时秒数")
     skip_permissions: bool = Field(default=True, description="跳过权限确认")
     context_files: list[str] | None = Field(default=None, description="授权访问的文件/目录")
     extra_env: dict[str, str] = Field(default_factory=dict, description="额外环境变量")

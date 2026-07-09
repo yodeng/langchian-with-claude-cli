@@ -84,7 +84,7 @@ def _run_claude_code(
     json_schema: dict | None = None,
     system_prompt: str | None = None,
     effort: str = "medium",
-    timeout: int = 300,
+    timeout: int = 600,
     use_worktree: bool = False,
     skip_permissions: bool = False,
     context_files: list[str] | None = None,
