@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+code_analysis_report_*.md
+.claude/
+CLAUDE.md
