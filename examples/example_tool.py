@@ -6,7 +6,7 @@ LangGraph Agent 委托 Claude Code 示例
   2. 带会话的委托 — 多步骤共享上下文
   3. 结构化委托 — 从代码库提取结构化数据
 
-运行：python examples/example_delegator.py
+运行：python examples/example_tool.py
 """
 
 import json
@@ -14,7 +14,7 @@ import os
 import sys
 from typing import Annotated, TypedDict
 
-# 确保能导入父目录的 claude_code_delegator
+# 确保能导入父目录的 claude_code_tool
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_anthropic import ChatAnthropic
@@ -22,7 +22,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from claude_code_delegator import (
+from claude_code_tool import (
     delegate_to_claude_code,
     delegate_to_claude_code_structured,
     delegate_to_claude_code_isolated,
@@ -348,7 +348,7 @@ if __name__ == "__main__":
         _, fn = examples[sys.argv[1]]
         fn()
     else:
-        print("用法: python example_delegator.py [1|2|3|4]\n")
+        print("用法: python example_tool.py [1|2|3|4]\n")
         for k, (name, _) in examples.items():
             print(f"  {k}: {name}")
         print("\n不加参数则运行示例 2（会话委托）...\n")
