@@ -11,6 +11,7 @@
   - [后端 1: ChatModel — `ChatClaudeCode`](#后端-1-chatmodel--chatclaudecode)
   - [后端 2: Tool — `claude_code` 系列](#后端-2-tool--claude_code-系列)
   - [后端 3: Skill — `claude-code-cli`](#后端-3-skill--claude-code-cli)
+- [vs `deep_agent`](#vs-deep_agent)
 - [完整工作流示例](#完整工作流示例)
 - [配置参数参考](#配置参数参考)
 - [项目结构](#项目结构)
@@ -240,6 +241,28 @@ from chat_claude_code import ChatClaudeCode
 llm = ChatClaudeCode(working_dir="<目标目录>", effort="medium")
 result = llm.invoke("分析这个项目的架构")
 ```
+
+---
+
+## vs `deep_agent`
+
+`langchain-with-claude-cli` 和 LangChain 的 [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) 都能构建强大的 Agent，但定位完全不同：
+
+| 维度 | `deep_agent` | `ChatClaudeCode` |
+|------|-------------|-------------------|
+| **执行能力** | LLM 推理 + LangChain 工具调用 | 真实文件系统、shell、git 操作（通过 `claude` CLI） |
+| **上下文管理** | LangChain 消息历史 + 中间件 hooks | Claude Code 原生 `--session-id` / `--resume` 持久化 |
+| **工具生态** | LangChain 工具生态（Tavily、代码执行等） | Claude Code 完整工具集（Read、Write、Edit、Bash、Glob、Grep 等） |
+| **子 Agent 模型** | 派生子 Agent，隔离上下文窗口 | `claude -p` 子进程隔离，独立 session |
+| **文件系统访问** | 限于配置的工作目录 + 工具授权 | 完整项目级访问，支持 `--add-dir` 和 git worktree |
+| **适合场景** | 多步推理、研究、规划、联网任务 | 代码分析、跨文件重构、文件操作、shell 自动化 |
+| **集成方式** | 高层 Agent 框架，内置中间件 | 底层 `BaseChatModel` / `@tool`，可插入任意 LangChain 流水线 |
+
+**如何选择：**
+
+- 用 **`deep_agent`** — 推理密集型任务：研究综述、多跳 Q&A、网页抓取、带规划/todo 的 Agent 编排。
+- 用 **`ChatClaudeCode`** — 需要真实代码执行：分析代码库、跨文件重构、执行 shell 命令、管理 git 工作流。
+- **组合使用** — 用 `deep_agent` 做编排器，将代码密集型子任务通过 tool 接口委托给 `ChatClaudeCode`。
 
 ---
 

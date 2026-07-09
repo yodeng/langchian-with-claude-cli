@@ -11,6 +11,7 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
   - [Backend 1: ChatModel — `ChatClaudeCode`](#backend-1-chatmodel--chatclaudecode)
   - [Backend 2: Tool — `claude_code` Series](#backend-2-tool--claude_code-series)
   - [Backend 3: Skill — `claude-code-cli`](#backend-3-skill--claude-code-cli)
+- [vs `deep_agent`](#vs-deep_agent)
 - [Complete Workflow Examples](#complete-workflow-examples)
 - [Configuration Reference](#configuration-reference)
 - [Project Structure](#project-structure)
@@ -240,6 +241,28 @@ from chat_claude_code import ChatClaudeCode
 llm = ChatClaudeCode(working_dir="<target-dir>", effort="medium")
 result = llm.invoke("Analyze the project architecture")
 ```
+
+---
+
+## vs `deep_agent`
+
+Both `langchain-with-claude-cli` and LangChain's [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) let you build powerful agents, but they serve fundamentally different needs:
+
+| Dimension | `deep_agent` | `ChatClaudeCode` |
+|-----------|-------------|-------------------|
+| **Execution capability** | LLM reasoning + tool calling via LangChain tools | Real filesystem, shell, and git operations via `claude` CLI |
+| **Context management** | LangChain-managed message history with middleware hooks | Claude Code native `--session-id` / `--resume` persistence |
+| **Tool ecosystem** | LangChain tool ecosystem (Tavily, code execution, etc.) | Full Claude Code tool set (Read, Write, Edit, Bash, Glob, Grep, etc.) |
+| **Sub-agent model** | Spawns sub-agents with isolated context windows | Subprocess isolation via `claude -p` with independent sessions |
+| **Filesystem access** | Limited to configured working directory + tool grants | Full project-level access with `--add-dir` and git worktree support |
+| **Best for** | Multi-step reasoning, research, planning, and web-connected tasks | Code analysis, project-wide refactoring, file operations, and shell automation |
+| **Integration style** | High-level agent framework with built-in middleware | Low-level `BaseChatModel` / `@tool` — plugs into any LangChain pipeline |
+
+**When to choose which:**
+
+- Use **`deep_agent`** when your task is reasoning-heavy — research synthesis, multi-hop Q&A, web scraping, or agent orchestration with planning/todo lists.
+- Use **`ChatClaudeCode`** when your task needs real code execution — analyzing a codebase, refactoring across files, running shell commands, or managing a git workflow.
+- **Combine both**: use `deep_agent` as the orchestrator that delegates code-heavy subtasks to `ChatClaudeCode` via its tool interface.
 
 ---
 
