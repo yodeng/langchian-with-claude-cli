@@ -611,14 +611,18 @@ class ChatClaudeCode(BaseChatModel):
 
         # 逐行读取 stream-json，通过共享解析器处理
         collected_text: list[str] = []
+        stop_triggered: bool = False
         try:
             for line in proc.stdout:
-                if stop:
+                if stop and not stop_triggered:
                     full_text = "".join(collected_text)
                     for stop_word in stop:
                         if stop_word in full_text:
                             proc.terminate()
+                            stop_triggered = True
                             break
+                if stop_triggered:
+                    break
 
                 event = _parse_stream_event_line(line.strip())
                 if event is None:
@@ -686,6 +690,11 @@ class ChatClaudeCode(BaseChatModel):
                 proc.communicate(), timeout=self.timeout
             )
         except asyncio.TimeoutError:
+            try:
+                proc.terminate()
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except Exception:
+                pass
             return ChatResult(
                 generations=[
                     ChatGeneration(
@@ -768,6 +777,7 @@ class ChatClaudeCode(BaseChatModel):
         self._session_turn += 1
 
         collected_text: list[str] = []
+        stop_triggered: bool = False
         try:
             while True:
                 line = await proc.stdout.readline()
@@ -779,12 +789,15 @@ class ChatClaudeCode(BaseChatModel):
                     continue
 
                 # 检查 stop
-                if stop:
+                if stop and not stop_triggered:
                     full = "".join(collected_text)
                     for stop_word in stop:
                         if stop_word in full:
                             proc.terminate()
+                            stop_triggered = True
                             break
+                if stop_triggered:
+                    break
 
                 event = _parse_stream_event_line(line_text)
                 if event is None:
@@ -808,8 +821,16 @@ class ChatClaudeCode(BaseChatModel):
                     )
                 # "stop" 事件自然结束，无需处理
         finally:
+            # 确保进程终止，防止僵尸进程
             try:
                 proc.terminate()
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("claude CLI 异步进程未在 5s 内终止，强制 kill")
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             except Exception:
                 logger.debug("异步进程终止时忽略异常（进程可能已退出）")
 
