@@ -1,5 +1,5 @@
 [project]
-name = "langchain-cc"
+name = "langchain-with-claude-cli"
 version = "0.1.0"
 description = "Claude Code CLI as LangChain ChatModel and Tool components"
 readme = "CLAUDE.md"
