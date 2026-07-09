@@ -330,7 +330,7 @@ python examples/example_chat_model.py
 | `effort` | `str` | `"medium"` | Effort level: `low` / `medium` / `high` / `xhigh` / `max` |
 | `model` | `str \| None` | `None` | Model name (uses Claude Code default if unset) |
 | `max_tokens` | `int \| None` | `None` | Maximum output tokens |
-| `timeout` | `int` | `300` | Timeout in seconds (10–3600) |
+| `timeout` | `int` | `600` | Timeout in seconds (10–3600) |
 | `skip_permissions` | `bool` | `True` | Skip permission prompts (recommended for automation) |
 | `allowed_tools` | `list[str] \| None` | `None` | Allowed tools, e.g. `["Read", "Write"]` |
 | `disallowed_tools` | `list[str] \| None` | `None` | Disallowed tools |

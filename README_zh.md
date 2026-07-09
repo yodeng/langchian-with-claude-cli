@@ -330,7 +330,7 @@ python examples/example_chat_model.py
 | `effort` | `str` | `"medium"` | 努力级别：`low` / `medium` / `high` / `xhigh` / `max` |
 | `model` | `str \| None` | `None` | 模型名称（默认使用 Claude Code 配置） |
 | `max_tokens` | `int \| None` | `None` | 最大输出 token 数 |
-| `timeout` | `int` | `300` | 超时秒数（10–3600） |
+| `timeout` | `int` | `600` | 超时秒数（10–3600） |
 | `skip_permissions` | `bool` | `True` | 跳过权限确认（自动化场景推荐开启） |
 | `allowed_tools` | `list[str] \| None` | `None` | 允许的工具列表，如 `["Read", "Write"]` |
 | `disallowed_tools` | `list[str] \| None` | `None` | 禁止的工具列表 |
