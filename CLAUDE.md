@@ -18,6 +18,9 @@ agents/                  # LangGraph Agent 实现
 examples/                # 使用示例
   example_chat_model.py  # ChatClaudeCode 7 种使用模式
   example_tool.py        # Tool 委托模式 4 种用法
+tests/                   # 测试（141 个用例）
+  test_chat_claude_code.py
+  test_claude_code_tool.py
 .claude/skills/          # 后端 3: Claude Code 自身 skill 系统
   claude-code-cli/       # Claude Code CLI 调用 skill
 ```
