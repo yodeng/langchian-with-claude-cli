@@ -62,12 +62,6 @@ Claude Code 自身的 skill，让 Claude Code 以子进程方式调用另一个 
 - `stderr` 在流式模式下使用 `DEVNULL`，避免管道缓冲区阻塞
 - 临时 schema 文件的写入放在 try 块内，确保异常时也能在 finally 中清理
 
-## 提交规范
-
-- 英文一句话，小写开头，不加 feat/fix 前缀
-- 不需要 Co-Authored-By
-- 多个要点用逗号连接
-- 参考：`.claude/COMMIT_CONVENTION.md`
 
 ## README 维护
 
