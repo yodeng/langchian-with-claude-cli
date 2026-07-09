@@ -118,8 +118,6 @@ def _run_claude_code(
     if json_schema:
         cmd.extend(["--output-format", "json"])
         schema_file = Path(working) / f".claude_schema_{str(uuid.uuid4())}.json"
-        schema_file.write_text(json.dumps(json_schema), encoding="utf-8")
-        cmd.extend(["--json-schema", str(schema_file)])
     else:
         cmd.extend(["--output-format", "json"])
 
@@ -169,6 +167,10 @@ def _run_claude_code(
 
     # === 执行 ===
     try:
+        if schema_file:
+            schema_file.write_text(json.dumps(json_schema), encoding="utf-8")
+            cmd.extend(["--json-schema", str(schema_file)])
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -310,7 +312,7 @@ def claude_code(
                     传入相同 ID 则在同一会话内延续（有上下文记忆）。
         allowed_tools: 允许的工具列表。空列表 = 使用默认限制。
                        例如: ["Read", "Write", "Bash(git diff)", "Bash(git log)"]
-        effort: 努力级别。low=快速 low=快速 / medium=平衡 / high=深入
+        effort: 努力级别。low=快速 / medium=平衡 / high=深入
 
     Returns:
         Claude Code 的执行结果（文本）
@@ -414,7 +416,6 @@ def claude_code_streaming(
     prompt: str,
     session: ClaudeCodeSession | None = None,
     working_dir: str = ".",
-    timeout: int = 300,
 ) -> "subprocess.Popen[str]":
     """
     启动 Claude Code 流式调用，返回 Popen 对象供逐行读取。
@@ -428,10 +429,10 @@ def claude_code_streaming(
         prompt: 任务描述
         session: 会话对象
         working_dir: 工作目录
-        timeout: 超时秒数
 
     Returns:
-        subprocess.Popen 对象，stdout 为流式 JSON 行
+        subprocess.Popen 对象，stdout 为流式 JSON 行。
+        调用方负责超时控制和进程清理。
     """
     cmd = [
         "claude", "-p", prompt,
@@ -448,6 +449,7 @@ def claude_code_streaming(
         session.resume_count += 1
 
     env = os.environ.copy()
+    env["CLAUDE_CODE_SIMPLE"] = "1"
 
     return subprocess.Popen(
         cmd,

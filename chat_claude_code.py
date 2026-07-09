@@ -6,7 +6,7 @@ ChatClaudeCode — 将 Claude Code CLI 作为 LangChain BaseChatModel 后端
 核心能力：
   - 同步/异步生成：_generate / _agenerate
   - 流式输出：_stream / _astream（解析 stream-json）
-  - 多轮对话：自动管理 --session-id / --continue
+  - 多轮对话：自动管理 --session-id / --resume
   - 工具调用：bind_tools() 将工具描述注入提示词，Claude Code 原生执行
   - 结构化输出：with_structured_output() 利用 --json-schema
 
@@ -381,7 +381,10 @@ class ChatClaudeCode(BaseChatModel):
                 set(new_instance.allowed_tools + tool_names)
             )
         else:
-            # 不强制设置 allowed_tools，让 Claude Code 自行管理权限
+            # 不强制设置 allowed_tools，让 Claude Code 自行管理权限。
+            # 理由：allowed_tools 是 CLI 级别的白名单限制（--allowedTools），
+            # 若用户未显式指定，不应由 bind_tools 引入额外约束，
+            # 否则会阻止 Claude Code 使用其默认工具集（Bash、Edit 等）。
             pass
 
         return new_instance
@@ -585,7 +588,7 @@ class ChatClaudeCode(BaseChatModel):
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 text=True,
                 cwd=self.working_dir,
                 env=env,
@@ -735,7 +738,7 @@ class ChatClaudeCode(BaseChatModel):
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
                 cwd=self.working_dir,
                 env=env,
             )
