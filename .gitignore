@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
 code_analysis_report_*.md
 .claude_schema_*.json
 .claude/
