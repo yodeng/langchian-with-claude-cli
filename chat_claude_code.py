@@ -37,9 +37,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import uuid
+from copy import deepcopy
 from typing import Any, AsyncIterator, Iterator, Optional, Sequence
 
 from langchain_core.callbacks import (
@@ -59,6 +61,8 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import Field, PrivateAttr
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -177,15 +181,68 @@ def _extract_usage(parsed: dict[str, Any]) -> dict[str, Any] | None:
 
 
 # ═══════════════════════════════════════════════════════════════
-# 流式事件解析
+# 流式事件解析（同步/异步共享）
 # ═══════════════════════════════════════════════════════════════
 
-def _parse_stream_event(line: str) -> dict[str, Any] | None:
-    """解析 stream-json 的一行事件"""
+def _parse_json_line(line: str) -> dict[str, Any] | None:
+    """解析单行 JSON，失败返回 None"""
     try:
         return json.loads(line)
     except json.JSONDecodeError:
         return None
+
+
+def _parse_stream_event_line(line: str) -> dict[str, Any] | None:
+    """解析一行 stream-json 输出，返回标准化的事件 dict 或 None。
+
+    返回格式: {"type": "text"|"usage"|"stop", ...}
+    - text: {"type": "text", "content": "增量文本"}
+    - usage: {"type": "usage", "input_tokens": N, "output_tokens": N, "total_tokens": N}
+    - stop: {"type": "stop"}
+    """
+    outer = _parse_json_line(line)
+    if outer is None:
+        return None
+
+    outer_type = outer.get("type", "")
+    if outer_type == "system":
+        return None
+
+    # 从 stream_event 包装中提取内层 event
+    if outer_type == "stream_event":
+        inner = outer.get("event", {})
+    else:
+        inner = outer
+
+    event_type = inner.get("type", "")
+
+    if event_type == "content_block_delta":
+        delta = inner.get("delta", {})
+        if isinstance(delta, dict):
+            delta_type = delta.get("type", "")
+            if delta_type == "text_delta":
+                text = delta.get("text", "")
+                if text:
+                    return {"type": "text", "content": text}
+            elif delta_type == "input_json_delta":
+                partial = delta.get("partial_json", "")
+                if partial:
+                    return {"type": "text", "content": partial}
+    elif event_type == "message_delta":
+        usage = inner.get("usage", {})
+        if usage:
+            input_t = usage.get("input_tokens", 0)
+            output_t = usage.get("output_tokens", 0)
+            return {
+                "type": "usage",
+                "input_tokens": input_t,
+                "output_tokens": output_t,
+                "total_tokens": input_t + output_t,
+            }
+    elif event_type == "message_stop":
+        return {"type": "stop"}
+
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -280,8 +337,6 @@ class ChatClaudeCode(BaseChatModel):
         Returns:
             新的 ChatClaudeCode 实例（复制配置并绑定工具）
         """
-        from copy import deepcopy
-
         # 使用 deepcopy 避免修改当前实例
         new_instance = deepcopy(self)
         new_instance._session_id = str(uuid.uuid4())
@@ -435,9 +490,6 @@ class ChatClaudeCode(BaseChatModel):
             # 如果绑定了工具，系统提示中包含工具描述
             cmd.extend(["--system-prompt", sp])
 
-        # 简洁模式
-        cmd.append("--bare")
-
         return cmd
 
     def _build_env(self) -> dict[str, str]:
@@ -557,7 +609,7 @@ class ChatClaudeCode(BaseChatModel):
 
         self._session_turn += 1
 
-        # 逐行读取 stream-json 输出
+        # 逐行读取 stream-json，通过共享解析器处理
         collected_text: list[str] = []
         try:
             for line in proc.stdout:
@@ -568,74 +620,38 @@ class ChatClaudeCode(BaseChatModel):
                             proc.terminate()
                             break
 
-                outer = _parse_stream_event(line.strip())
-                if outer is None:
+                event = _parse_stream_event_line(line.strip())
+                if event is None:
                     continue
 
-                outer_type = outer.get("type", "")
-
-                # 跳过 system 事件（hooks, status 等）
-                if outer_type == "system":
-                    continue
-
-                # 从 stream_event 中提取内层 event
-                if outer_type == "stream_event":
-                    inner = outer.get("event", {})
-                else:
-                    inner = outer
-
-                event_type = inner.get("type", "")
-
-                # content_block_delta → 文本增量
-                if event_type == "content_block_delta":
-                    delta = inner.get("delta", {})
-                    if isinstance(delta, dict):
-                        delta_type = delta.get("type", "")
-                        if delta_type == "text_delta":
-                            text_delta = delta.get("text", "")
-                            if text_delta:
-                                collected_text.append(text_delta)
-                                yield ChatGenerationChunk(
-                                    message=AIMessageChunk(content=text_delta)
-                                )
-                        elif delta_type == "input_json_delta":
-                            partial = delta.get("partial_json", "")
-                            if partial:
-                                collected_text.append(partial)
-                                yield ChatGenerationChunk(
-                                    message=AIMessageChunk(content=partial)
-                                )
-
-                # message_delta → usage 信息（最终）
-                elif event_type == "message_delta":
-                    usage = inner.get("usage", {})
-                    if usage:
-                        input_tokens = usage.get("input_tokens", 0)
-                        output_tokens = usage.get("output_tokens", 0)
-                        yield ChatGenerationChunk(
-                            message=AIMessageChunk(
-                                content="",
-                                usage_metadata={
-                                    "input_tokens": input_tokens,
-                                    "output_tokens": output_tokens,
-                                    "total_tokens": input_tokens + output_tokens,
-                                },
-                            )
+                if event["type"] == "text":
+                    collected_text.append(event["content"])
+                    yield ChatGenerationChunk(
+                        message=AIMessageChunk(content=event["content"])
+                    )
+                elif event["type"] == "usage":
+                    yield ChatGenerationChunk(
+                        message=AIMessageChunk(
+                            content="",
+                            usage_metadata={
+                                "input_tokens": event["input_tokens"],
+                                "output_tokens": event["output_tokens"],
+                                "total_tokens": event["total_tokens"],
+                            },
                         )
-
-                elif event_type == "message_stop":
-                    pass  # 自然结束
+                    )
+                # "stop" 事件自然结束，无需处理
 
         finally:
-            # 确保进程终止
+            # 确保进程终止，防止僵尸进程
             try:
                 proc.terminate()
                 proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning("claude CLI 进程未在 5s 内终止，强制 kill")
+                proc.kill()
             except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+                logger.debug("进程终止时忽略异常（进程可能已退出）")
 
     # ═══════════════════════════════════════════════════════════
     # 异步生成
@@ -770,65 +786,32 @@ class ChatClaudeCode(BaseChatModel):
                             proc.terminate()
                             break
 
-                outer = _parse_stream_event(line_text)
-                if outer is None:
+                event = _parse_stream_event_line(line_text)
+                if event is None:
                     continue
 
-                outer_type = outer.get("type", "")
-
-                # 跳过 system 事件
-                if outer_type == "system":
-                    continue
-
-                # 从 stream_event 中提取内层 event
-                if outer_type == "stream_event":
-                    inner = outer.get("event", {})
-                else:
-                    inner = outer
-
-                event_type = inner.get("type", "")
-
-                if event_type == "content_block_delta":
-                    delta = inner.get("delta", {})
-                    if isinstance(delta, dict):
-                        if delta.get("type") == "text_delta":
-                            text_delta = delta.get("text", "")
-                            if text_delta:
-                                collected_text.append(text_delta)
-                                yield ChatGenerationChunk(
-                                    message=AIMessageChunk(content=text_delta)
-                                )
-                        elif delta.get("type") == "input_json_delta":
-                            partial = delta.get("partial_json", "")
-                            if partial:
-                                collected_text.append(partial)
-                                yield ChatGenerationChunk(
-                                    message=AIMessageChunk(content=partial)
-                                )
-
-                elif event_type == "message_delta":
-                    usage = inner.get("usage", {})
-                    if usage:
-                        input_tokens = usage.get("input_tokens", 0)
-                        output_tokens = usage.get("output_tokens", 0)
-                        yield ChatGenerationChunk(
-                            message=AIMessageChunk(
-                                content="",
-                                usage_metadata={
-                                    "input_tokens": input_tokens,
-                                    "output_tokens": output_tokens,
-                                    "total_tokens": input_tokens + output_tokens,
-                                },
-                            )
+                if event["type"] == "text":
+                    collected_text.append(event["content"])
+                    yield ChatGenerationChunk(
+                        message=AIMessageChunk(content=event["content"])
+                    )
+                elif event["type"] == "usage":
+                    yield ChatGenerationChunk(
+                        message=AIMessageChunk(
+                            content="",
+                            usage_metadata={
+                                "input_tokens": event["input_tokens"],
+                                "output_tokens": event["output_tokens"],
+                                "total_tokens": event["total_tokens"],
+                            },
                         )
-
-                elif event_type == "message_stop":
-                    pass  # 自然结束
+                    )
+                # "stop" 事件自然结束，无需处理
         finally:
             try:
                 proc.terminate()
             except Exception:
-                pass
+                logger.debug("异步进程终止时忽略异常（进程可能已退出）")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -857,7 +840,7 @@ def _build_tool_description(tools: list[BaseTool]) -> str:
                     if args_parts:
                         args_schema = "\n  参数:\n" + "\n".join(args_parts)
             except Exception:
-                pass
+                logger.debug("解析工具参数 schema 失败，跳过参数展示")
 
         lines.append(f"- **{tool.name}**: {desc}{args_schema}")
 

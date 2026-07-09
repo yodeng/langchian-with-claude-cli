@@ -18,15 +18,17 @@ Claude Code Delegator — 将 Claude Code CLI 包装为 LangChain Tool
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
-import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════
@@ -47,7 +49,7 @@ class ClaudeCodeResult:
 @dataclass
 class ClaudeCodeSession:
     """管理一个 Claude Code 会话，支持多步延续"""
-    session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     working_dir: str = "."
     resume_count: int = 0
 
@@ -95,9 +97,10 @@ def _run_claude_code(
     working = working_dir
 
     # === 输出格式 ===
+    schema_file = None
     if json_schema:
         cmd.extend(["--output-format", "json"])
-        schema_file = Path(working) / f".claude_schema_{uuid.uuid4().hex[:8]}.json"
+        schema_file = Path(working) / f".claude_schema_{str(uuid.uuid4())}.json"
         schema_file.write_text(json.dumps(json_schema), encoding="utf-8")
         cmd.extend(["--json-schema", str(schema_file)])
     else:
@@ -105,9 +108,10 @@ def _run_claude_code(
 
     # === 会话管理 ===
     if session is not None:
-        cmd.extend(["--session-id", session.session_id])
-        if session.resume_count > 0:
-            cmd.append("--continue")
+        if session.resume_count == 0:
+            cmd.extend(["--session-id", session.session_id])
+        else:
+            cmd.extend(["--resume", session.session_id])
         session.resume_count += 1
 
     # === 隔离模式 ===
@@ -176,7 +180,7 @@ def _run_claude_code(
                             if isinstance(block, dict)
                         )
             except json.JSONDecodeError:
-                pass  # 非 JSON 输出，直接用原始文本
+                logger.debug("JSON 解析失败，使用原始文本输出")
 
         return ClaudeCodeResult(
             success=result.returncode == 0,
@@ -201,6 +205,13 @@ def _run_claude_code(
             stderr="claude CLI 未找到，请确认已安装 Claude Code",
             returncode=-2,
         )
+    finally:
+        # 清理临时 schema 文件
+        if schema_file and schema_file.exists():
+            try:
+                schema_file.unlink()
+            except OSError:
+                pass
 
 
 # ═══════════════════════════════════════════
@@ -219,7 +230,7 @@ def get_or_create_session(
     if session_id and session_id in _sessions:
         return _sessions[session_id]
     session = ClaudeCodeSession(
-        session_id=session_id or uuid.uuid4().hex[:12],
+        session_id=session_id or str(uuid.uuid4()),
         working_dir=working_dir,
     )
     _sessions[session.session_id] = session
@@ -373,16 +384,17 @@ def delegate_to_claude_code_streaming(
         "claude", "-p", prompt,
         "--output-format", "stream-json",
         "--include-partial-messages",
+        "--verbose",  # stream-json 要求 --verbose
     ]
 
     if session:
-        cmd.extend(["--session-id", session.session_id])
-        if session.resume_count > 0:
-            cmd.append("--continue")
+        if session.resume_count == 0:
+            cmd.extend(["--session-id", session.session_id])
+        else:
+            cmd.extend(["--resume", session.session_id])
         session.resume_count += 1
 
     env = os.environ.copy()
-    env["CLAUDE_CODE_SIMPLE"] = "1"
 
     return subprocess.Popen(
         cmd,
