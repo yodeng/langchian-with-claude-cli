@@ -1,0 +1,383 @@
+[English](./README.md) | [中文](./README_zh.md)
+
+# langchain-with-claude-cli
+
+Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangChain ecosystem components, providing three backend integration approaches. Give your LangChain/LangGraph applications full filesystem, shell, and git capabilities.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Three Backends](#three-backends)
+  - [Backend 1: ChatModel — `ChatClaudeCode`](#backend-1-chatmodel--chatclaudecode)
+  - [Backend 2: Tool — `claude_code` Series](#backend-2-tool--claude_code-series)
+  - [Backend 3: Skill — `claude-code-cli`](#backend-3-skill--claude-code-cli)
+- [Complete Workflow Examples](#complete-workflow-examples)
+- [Configuration Reference](#configuration-reference)
+- [Project Structure](#project-structure)
+- [Development Guide](#development-guide)
+- [License](#license)
+
+## Installation
+
+### Prerequisites
+
+- Python >= 3.10
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) >= 2.1.162
+
+### Install
+
+```bash
+pip install -e .
+
+# With Agent support
+pip install -e ".[agents]"
+
+# With examples
+pip install -e ".[examples]"
+```
+
+Core dependencies: `langchain-core >= 1.0`, `pydantic >= 2.0`.
+
+## Three Backends
+
+### Backend 1: ChatModel — `ChatClaudeCode`
+
+Extends `BaseChatModel` with full `ChatAnthropic`/`ChatOpenAI` API compatibility. Ideal as the LLM node in a LangGraph agent.
+
+**Highlights:**
+- Invokes `claude -p` as a subprocess with full filesystem, shell, and git access
+- Implements `_generate` / `_stream` / `_agenerate` / `_astream`
+- Multi-turn context automatically maintained via `--session-id` / `--resume`
+- `bind_tools()` injects tool descriptions into the system prompt; Claude Code executes tools natively
+- `with_structured_output()` uses `--json-schema` to constrain output format
+- `reset_session()` clears memory for a fresh conversation
+
+#### Basic Usage
+
+```python
+from chat_claude_code import ChatClaudeCode
+
+llm = ChatClaudeCode(working_dir="/path/to/project", effort="medium")
+
+# Single-turn
+response = llm.invoke("Analyze the project architecture")
+print(response.content)
+
+# Multi-turn (context is automatically preserved)
+llm.invoke("List all Python files")
+llm.invoke("Describe the first file")  # remembers the previous context
+
+# Streaming
+for chunk in llm.stream("Write a sorting algorithm"):
+    print(chunk.content, end="", flush=True)
+
+# Async streaming
+async for chunk in llm.astream("Optimize this code"):
+    print(chunk.content, end="", flush=True)
+```
+
+#### Structured Output
+
+```python
+from pydantic import BaseModel
+
+class FileInfo(BaseModel):
+    path: str
+    functions: list[str]
+    classes: list[str]
+    imports: list[str]
+
+llm = ChatClaudeCode(working_dir="./my-project")
+structured_llm = llm.with_structured_output(FileInfo)
+result = structured_llm.invoke("Analyze app.py structure")
+# result is a FileInfo instance
+```
+
+#### Tool Binding
+
+```python
+from langchain_core.tools import tool
+
+@tool
+def read_file(path: str) -> str:
+    """Read a file's contents"""
+    with open(path) as f:
+        return f.read()
+
+llm = ChatClaudeCode(working_dir=".")
+llm_with_tools = llm.bind_tools([read_file])
+response = llm_with_tools.invoke("Read README.md content")
+```
+
+#### Using in LangGraph
+
+```python
+from langgraph.graph import StateGraph, END
+from chat_claude_code import ChatClaudeCode
+
+graph = StateGraph(AgentState)
+graph.add_node("agent", lambda s: {
+    "messages": [ChatClaudeCode(working_dir=".").invoke(s["messages"])]
+})
+graph.set_entry_point("agent")
+graph.add_edge("agent", END)
+```
+
+---
+
+### Backend 2: Tool — `claude_code` Series
+
+`@tool`-decorated functions that let a LangGraph agent delegate specific steps to Claude Code.
+
+Four tool functions are provided:
+
+| Function | Purpose | Output Format |
+|----------|---------|---------------|
+| `claude_code` | Basic delegation | Plain text |
+| `claude_code_structured` | Structured output | JSON (constrained by `--json-schema`) |
+| `claude_code_isolated` | Isolated execution | Plain text (git worktree isolation) |
+| `claude_code_streaming` | Streaming delegation | `subprocess.Popen` object |
+
+#### Basic Delegation
+
+```python
+from claude_code_tool import claude_code
+
+result = claude_code.invoke({
+    "task": "Scan the project and list all function signatures",
+    "effort": "low",
+})
+print(result)
+```
+
+#### Structured Output
+
+```python
+from claude_code_tool import claude_code_structured
+
+schema = {
+    "type": "object",
+    "properties": {
+        "files": {"type": "array", "items": {"type": "string"}},
+        "total_functions": {"type": "integer"},
+    },
+    "required": ["files", "total_functions"],
+}
+
+result = claude_code_structured.invoke({
+    "task": "Analyze the project structure — list all Python files and total function count",
+    "output_schema": schema,
+})
+# result is a JSON string matching the schema
+```
+
+#### Isolated Execution
+
+```python
+from claude_code_tool import claude_code_isolated
+
+result = claude_code_isolated.invoke({
+    "task": "Fix type annotation issues in app.py",
+    "context_files": ["app.py"],
+})
+# Runs in an independent git worktree; does not affect the main workspace
+```
+
+#### Multi-step Session Delegation
+
+```python
+from claude_code_tool import claude_code, close_session
+
+SESSION = "code-review-001"
+
+# Step 1: Explore
+r1 = claude_code.invoke({
+    "task": "Analyze the project structure and list all modules",
+    "session_id": SESSION,
+})
+
+# Step 2: Continue in the same session (context is preserved)
+r2 = claude_code.invoke({
+    "task": "Based on the previous analysis, check for circular dependencies",
+    "session_id": SESSION,
+})
+
+# Clean up
+close_session(SESSION)
+```
+
+#### Using in a LangGraph Agent
+
+```python
+from langgraph.prebuilt import ToolNode
+from claude_code_tool import claude_code, claude_code_structured
+
+tools = [claude_code, claude_code_structured]
+llm_with_tools = ChatAnthropic(model="claude-sonnet-4-6").bind_tools(tools)
+
+graph = StateGraph(AgentState)
+graph.add_node("agent", agent_node)
+graph.add_node("tools", ToolNode(tools))
+```
+
+---
+
+### Backend 3: Skill — `claude-code-cli`
+
+Integration with Claude Code's own skill system. `.claude/skills/claude-code-cli/` enables Claude Code to invoke another Claude Code instance as a subprocess. Suitable for:
+
+- Isolated subprocess execution (independent session and worktree)
+- Multi-level invocation (outer Claude Code orchestrates inner Claude Code)
+- Reuses `chat_claude_code.py` and `claude_code_tool.py` via symlinks
+
+```python
+import os, sys
+sys.path.insert(0, os.path.join(
+    os.path.dirname(__file__), ".claude/skills/claude-code-cli"
+))
+from chat_claude_code import ChatClaudeCode
+
+llm = ChatClaudeCode(working_dir="<target-dir>", effort="medium")
+result = llm.invoke("Analyze the project architecture")
+```
+
+---
+
+## Complete Workflow Examples
+
+### Code Analysis Pipeline (`agents/code_analysis_agent.py`)
+
+A three-stage LangGraph pipeline using `ChatClaudeCode` as the reasoning backend at each stage:
+
+```
+Structure Analysis → Quality Analysis → Report Generation
+```
+
+```bash
+python agents/code_analysis_agent.py /path/to/project
+```
+
+### Multi-turn Memory Demo (`agents/demo_memory_agent.py`)
+
+Demonstrates `ChatClaudeCode` session memory capabilities:
+
+- **Demo 1**: Single-instance multi-turn with automatic context preservation
+- **Demo 2**: Explicit `reset_session()` to clear memory
+- **Demo 3**: Two independent instances with isolated sessions
+- **Demo 4**: Cross-graph invocations with persistent memory
+
+```bash
+python agents/demo_memory_agent.py 1   # single-instance multi-turn
+python agents/demo_memory_agent.py 2   # session reset
+```
+
+### Tool Delegation Examples (`examples/example_tool.py`)
+
+Four delegation patterns:
+
+| Pattern | Function |
+|---------|----------|
+| Basic delegation | `example_basic_delegation()` |
+| Session delegation | `example_session_delegation()` |
+| Structured delegation | `example_structured_delegation()` |
+| Full agent | `example_full_agent()` |
+
+```bash
+python examples/example_tool.py 1   # basic delegation
+python examples/example_tool.py 4   # full agent
+```
+
+### ChatModel Examples (`examples/example_chat_model.py`)
+
+Seven usage patterns covering invoke, stream, async, tools, and structured output.
+
+```bash
+python examples/example_chat_model.py
+```
+
+---
+
+## Configuration Reference
+
+### ChatClaudeCode Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `working_dir` | `str` | `"."` | Working directory for Claude Code execution |
+| `effort` | `str` | `"medium"` | Effort level: `low` / `medium` / `high` / `xhigh` / `max` |
+| `model` | `str \| None` | `None` | Model name (uses Claude Code default if unset) |
+| `max_tokens` | `int \| None` | `None` | Maximum output tokens |
+| `timeout` | `int` | `300` | Timeout in seconds (10–3600) |
+| `skip_permissions` | `bool` | `True` | Skip permission prompts (recommended for automation) |
+| `allowed_tools` | `list[str] \| None` | `None` | Allowed tools, e.g. `["Read", "Write"]` |
+| `disallowed_tools` | `list[str] \| None` | `None` | Disallowed tools |
+| `system_prompt` | `str \| None` | `None` | Custom system prompt |
+| `context_files` | `list[str] \| None` | `None` | Additional files/directories to grant access to |
+| `extra_env` | `dict[str, str]` | `{}` | Extra environment variables |
+
+### claude_code Series Parameters
+
+| Parameter | Applies To | Description |
+|-----------|------------|-------------|
+| `task` | All | Detailed task description |
+| `session_id` | `claude_code`, `claude_code_structured` | Session ID: empty = isolated, same ID = shared context |
+| `allowed_tools` | `claude_code` | Allowed tool list |
+| `output_schema` | `claude_code_structured` | JSON Schema for output constraints |
+| `context_files` | `claude_code_isolated` | Authorized file/directory paths |
+| `effort` | All (except streaming) | Effort level: `low` / `medium` / `high` |
+
+---
+
+## Project Structure
+
+```
+langchain-with-claude-cli/
+├── chat_claude_code.py         # Backend 1: ChatClaudeCode — BaseChatModel subclass
+├── claude_code_tool.py         # Backend 2: claude_code series — @tool wrappers
+├── pyproject.toml              # Project config & dependencies
+├── agents/                     # LangGraph agent implementations
+│   ├── code_analysis_agent.py  #   Three-stage code analysis pipeline
+│   └── demo_memory_agent.py    #   Multi-turn memory demo
+├── examples/                   # Standalone example scripts
+│   ├── example_chat_model.py   #   ChatClaudeCode: 7 usage patterns
+│   └── example_tool.py         #   Tool delegation: 4 patterns
+└── .claude/skills/             # Backend 3: Claude Code skill system
+    └── claude-code-cli/        #   Skill definition + symlinks
+```
+
+---
+
+## Development Guide
+
+### Technical Notes
+
+- Requires `claude` CLI >= 2.1.162, `langchain-core >= 1.0`
+- Streaming requires `--verbose` with `--output-format stream-json`
+- Event format: outer `stream_event` wraps inner `event`; unwrap then parse `content_block_delta`
+- `usage_metadata` must include a `total_tokens` field
+
+### Commit Convention
+
+- One-line English, lowercase, no feat/fix prefix
+- No `Co-Authored-By`
+- See `.claude/COMMIT_CONVENTION.md`
+
+### Adding a New Tool Function
+
+In `claude_code_tool.py`:
+
+```python
+@tool
+def my_new_tool(task: str, ...) -> str:
+    """Tool description"""
+    result = _run_claude_code(task, ...)
+    return result.output
+```
+
+Follow the `claude_code` naming style (no extra prefixes) for consistency.
+
+---
+
+## License
+
+MIT

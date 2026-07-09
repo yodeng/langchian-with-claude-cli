@@ -2,7 +2,7 @@
 name = "langchain-with-claude-cli"
 version = "0.1.0"
 description = "Claude Code CLI as LangChain ChatModel and Tool components"
-readme = "CLAUDE.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [

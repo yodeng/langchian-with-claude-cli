@@ -291,7 +291,7 @@ def get_or_create_session(
 
 
 @tool
-def delegate_to_claude_code(
+def claude_code(
     task: str,
     session_id: str = "",
     allowed_tools: list[str] | None = None,
@@ -333,7 +333,7 @@ def delegate_to_claude_code(
 
 
 @tool
-def delegate_to_claude_code_structured(
+def claude_code_structured(
     task: str,
     output_schema: dict,
     session_id: str = "",
@@ -347,7 +347,7 @@ def delegate_to_claude_code_structured(
         task: 详细的任务描述。Claude Code 会按 output_schema 约束的格式返回。
         output_schema: JSON Schema 定义期望的输出结构。
                        例如: {"type": "object", "properties": {"files": {"type": "array", ...}}}
-        session_id: 会话 ID，同 delegate_to_claude_code
+        session_id: 会话 ID，同 claude_code
         effort: 努力级别
 
     Returns:
@@ -374,7 +374,7 @@ def delegate_to_claude_code_structured(
 
 
 @tool
-def delegate_to_claude_code_isolated(
+def claude_code_isolated(
     task: str,
     context_files: list[str],
     effort: str = "high",
@@ -410,7 +410,7 @@ def delegate_to_claude_code_isolated(
 # 高级：流式调用（用于实时反馈）
 # ═══════════════════════════════════════════
 
-def delegate_to_claude_code_streaming(
+def claude_code_streaming(
     prompt: str,
     session: ClaudeCodeSession | None = None,
     working_dir: str = ".",
@@ -420,7 +420,7 @@ def delegate_to_claude_code_streaming(
     启动 Claude Code 流式调用，返回 Popen 对象供逐行读取。
 
     用法:
-        with delegate_to_claude_code_streaming("分析这个项目") as proc:
+        with claude_code_streaming("分析这个项目") as proc:
             for line in proc.stdout:
                 print(line, end="")
 

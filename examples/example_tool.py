@@ -23,9 +23,9 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from claude_code_tool import (
-    delegate_to_claude_code,
-    delegate_to_claude_code_structured,
-    delegate_to_claude_code_isolated,
+    claude_code,
+    claude_code_structured,
+    claude_code_isolated,
     close_session,
 )
 
@@ -58,7 +58,7 @@ def example_basic_delegation():
         temperature=0,
     )
 
-    tools = [delegate_to_claude_code]
+    tools = [claude_code]
     llm_with_tools = llm.bind_tools(tools)
 
     # 构建 Graph
@@ -90,7 +90,7 @@ def example_basic_delegation():
 1. 首先，分析 /home/dengyong 目录下的 Python 文件结构和主要功能
 2. 然后，基于分析结果生成一份项目架构报告，保存为 project_report.md
 
-使用 delegate_to_claude_code 工具执行每个步骤。
+使用 claude_code 工具执行每个步骤。
 """,
         }],
     })
@@ -117,7 +117,7 @@ def example_session_delegation():
 
     # 步骤 1：探索代码库
     print("\n--- 步骤 1: 探索代码库 ---")
-    r1 = delegate_to_claude_code.invoke({
+    r1 = claude_code.invoke({
         "task": "探索 /home/dengyong 目录，列出所有 Python 文件，"
                 "简要说明每个文件的功能。不需要修改任何文件。",
         "session_id": SESSION_ID,
@@ -128,7 +128,7 @@ def example_session_delegation():
 
     # 步骤 2：在同一个 session 中修复问题
     print("\n--- 步骤 2: 修复问题（同一会话） ---")
-    r2 = delegate_to_claude_code.invoke({
+    r2 = claude_code.invoke({
         "task": "基于你刚才对项目的理解，检查 rag_prompts.py 是否有可改进的地方，"
                 "如果有，请优化并保存。如果没有，说明原因。",
         "session_id": SESSION_ID,
@@ -139,7 +139,7 @@ def example_session_delegation():
 
     # 步骤 3：验证修复
     print("\n--- 步骤 3: 验证修复（同一会话） ---")
-    r3 = delegate_to_claude_code.invoke({
+    r3 = claude_code.invoke({
         "task": "确认你刚才做的修改是否正确：重新读取 rag_prompts.py，"
                 "验证语法和逻辑正确性。",
         "session_id": SESSION_ID,
@@ -223,7 +223,7 @@ def example_structured_delegation():
         "required": ["files", "summary"],
     }
 
-    result = delegate_to_claude_code_structured.invoke({
+    result = claude_code_structured.invoke({
         "task": (
             "扫描 /home/dengyong 目录下所有 .py 文件（不包括 miniconda 和 .cache 子目录）。"
             "对每个文件，提取：函数名+签名、类名+方法、import 列表。"
@@ -253,9 +253,9 @@ def example_structured_delegation():
 SYSTEM_PROMPT = """你是一个技术主管 Agent，负责协调任务执行。
 
 你有以下工具可以调用：
-- delegate_to_claude_code: 将单步任务委派给 Claude Code（文件操作、代码分析、shell 执行等）
-- delegate_to_claude_code_structured: 委派并获取结构化 JSON 数据
-- delegate_to_claude_code_isolated: 在隔离环境中委派任务
+- claude_code: 将单步任务委派给 Claude Code（文件操作、代码分析、shell 执行等）
+- claude_code_structured: 委派并获取结构化 JSON 数据
+- claude_code_isolated: 在隔离环境中委派任务
 
 工作流程：
 1. 分析用户需求，拆解为子任务
@@ -264,7 +264,7 @@ SYSTEM_PROMPT = """你是一个技术主管 Agent，负责协调任务执行。
 
 重要规则：
 - 涉及文件读写、git、shell 命令的任务，必须委托给 Claude Code
-- 需要结构化输出（如统计数据）时，用 delegate_to_claude_code_structured
+- 需要结构化输出（如统计数据）时，用 claude_code_structured
 - 多步骤相关任务使用相同的 session_id 保持上下文
 - 每次调用后，向用户报告进展
 """
@@ -274,9 +274,9 @@ def example_full_agent():
     """
     场景：用户要求 '检查项目代码质量并给出改进建议'
     Agent 自动拆解为：
-      1. 代码结构分析 → delegate_to_claude_code_structured
-      2. Lint/格式化检查 → delegate_to_claude_code
-      3. 生成改进报告 → delegate_to_claude_code（同一 session）
+      1. 代码结构分析 → claude_code_structured
+      2. Lint/格式化检查 → claude_code
+      3. 生成改进报告 → claude_code（同一 session）
     """
     print("\n" + "=" * 60)
     print("示例 4: 完整 Agent — 代码质量审查")
@@ -285,9 +285,9 @@ def example_full_agent():
     llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0)
 
     tools = [
-        delegate_to_claude_code,
-        delegate_to_claude_code_structured,
-        delegate_to_claude_code_isolated,
+        claude_code,
+        claude_code_structured,
+        claude_code_isolated,
     ]
     llm_with_tools = llm.bind_tools(tools)
 
@@ -319,9 +319,9 @@ def example_full_agent():
             "content": """
 检查 /home/dengyong 下 Python 项目的代码质量，给出改进建议：
 
-1. 先用 delegate_to_claude_code_structured 分析代码结构和依赖关系
-2. 再用 delegate_to_claude_code 检查代码风格、潜在问题
-3. 最后用 delegate_to_claude_code（同一 session）生成一份改进报告保存为 quality_report.md
+1. 先用 claude_code_structured 分析代码结构和依赖关系
+2. 再用 claude_code 检查代码风格、潜在问题
+3. 最后用 claude_code（同一 session）生成一份改进报告保存为 quality_report.md
 """,
         }],
     })

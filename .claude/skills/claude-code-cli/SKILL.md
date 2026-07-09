@@ -11,7 +11,7 @@ description: 通过 Claude Code CLI 子进程执行代码分析、文件操作�
 
 核心模块位于此 skill 目录下：
 - `chat_claude_code.py` — `ChatClaudeCode`（LangChain BaseChatModel 适配器）
-- `claude_code_tool.py` — `delegate_to_claude_code`（LangChain Tool 封装）
+- `claude_code_tool.py` — `claude_code`（LangChain Tool 封装）
 
 ## 使用方式
 
@@ -41,9 +41,9 @@ for chunk in llm.stream("<任务描述>"):
 ```python
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".claude/skills/claude-code-cli"))
-from claude_code_tool import delegate_to_claude_code
+from claude_code_tool import claude_code
 
-result = delegate_to_claude_code.invoke({
+result = claude_code.invoke({
     "task": "<任务描述>",
     "session_id": "my-session",  # 同一 session_id 保持上下文
     "effort": "high",
