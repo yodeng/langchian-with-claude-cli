@@ -22,7 +22,7 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".claude/skills/claude-code-cli"))
 from chat_claude_code import ChatClaudeCode
 
-llm = ChatClaudeCode(working_dir="<目标目录>", effort="medium", timeout=300)
+llm = ChatClaudeCode(working_dir="<目标目录>", effort="medium", timeout=600)
 
 # 单轮调用
 result = llm.invoke("<任务描述>")
@@ -56,7 +56,7 @@ result = claude_code.invoke({
 |------|------|--------|
 | `working_dir` | 工作目录 | `.` |
 | `effort` | low/medium/high/xhigh/max | medium |
-| `timeout` | 超时秒数 | 300 |
+| `timeout` | 超时秒数 | 600 |
 | `allowed_tools` | 允许的工具列表 | 无限制 |
 | `skip_permissions` | 跳过权限确认 | True |
 
