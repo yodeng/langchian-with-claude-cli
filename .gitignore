@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+build/
+dist/
 code_analysis_report_*.md
 settings.local.json
 .claude_schema_*.json
