@@ -308,7 +308,7 @@ def create_claude_deep_agent(
 
     Args:
         model: LLM 后端。
-            支持 ``"provider:model"`` 格式字符串（如 ``"deepseek-v4-pro"``），
+            支持模型名字符串（如 ``"deepseek-v4-pro"``），
             或任何 ``BaseChatModel`` 实例（包括 ``ChatClaudeCode``）。
             默认使用 ``"deepseek-v4-pro"``。
 
