@@ -9,3 +9,5 @@ settings.local.json
 .claude_schema_*.json
 .claude/
 CLAUDE.md
+*.swp
+*.swo

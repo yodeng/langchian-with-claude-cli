@@ -81,7 +81,6 @@ class DeepAgentRequest(BaseModel):
         default=None,
         description="编排层 LLM，默认 deepseek-v4-pro",
     )
-    working_dir: str = Field(default=".", description="工作目录")
     claude_tool_effort: str | None = Field(
         default=None,
         description="Claude Code 工具 effort 级别",
@@ -134,13 +133,13 @@ def _get_or_create_llm(request: ChatRequest) -> tuple[str, ChatClaudeCode]:
 
 
 @app.get("/health")
-async def health():
+def health():
     """健康检查"""
     return {"status": "ok", "active_sessions": len(_sessions)}
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+def chat(request: ChatRequest):
     """非流式对话。"""
     sid, llm = _get_or_create_llm(request)
 
@@ -158,11 +157,11 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+def chat_stream(request: ChatRequest):
     """流式对话（SSE）。"""
     sid, llm = _get_or_create_llm(request)
 
-    async def event_generator():
+    def event_generator():
         try:
             for chunk in llm.stream([HumanMessage(content=request.message)]):
                 if chunk.content:
@@ -189,7 +188,7 @@ async def chat_stream(request: ChatRequest):
 
 
 @app.post("/deep-agent", response_model=DeepAgentResponse)
-async def deep_agent(request: DeepAgentRequest):
+def deep_agent(request: DeepAgentRequest):
     """非流式 Deep Agent 编排。
 
     使用 deep_agent 进行任务规划、分解和执行。
@@ -232,7 +231,7 @@ async def deep_agent(request: DeepAgentRequest):
 
 
 @app.post("/deep-agent/stream")
-async def deep_agent_stream(request: DeepAgentRequest):
+def deep_agent_stream(request: DeepAgentRequest):
     """流式 Deep Agent 编排（SSE）。
 
     实时推送 deep_agent 编排过程中产生的消息。
@@ -245,7 +244,7 @@ async def deep_agent_stream(request: DeepAgentRequest):
             detail="需要安装 deepagents: pip install -e '.[deepagent]'",
         )
 
-    async def event_generator():
+    def event_generator():
         try:
             agent = create_claude_deep_agent(
                 model=request.model,
@@ -283,7 +282,7 @@ async def deep_agent_stream(request: DeepAgentRequest):
 
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
+def delete_session(session_id: str):
     """删除指定会话，释放资源。"""
     if session_id in _sessions:
         del _sessions[session_id]
@@ -292,7 +291,7 @@ async def delete_session(session_id: str):
 
 
 @app.get("/sessions")
-async def list_sessions():
+def list_sessions():
     """列出当前活跃会话。"""
     return {
         "count": len(_sessions),
