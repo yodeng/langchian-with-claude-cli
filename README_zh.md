@@ -25,8 +25,7 @@
 
 - Python >= 3.10
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) >= 2.1.162
-- `DEEPSEEK_API_KEY` 环境变量（使用 `ChatOpenAI` 后端时需要）
-- `DEEPSEEK_BASE_URL` 环境变量（可选，默认 `https://api.deepseek.com`）
+- `OPENAI_API_KEY` 和 `OPENAI_BASE_URL` 环境变量（使用 `ChatOpenAI` 后端时需要）
 
 ### 安装项目
 
@@ -220,7 +219,7 @@ from langgraph.prebuilt import ToolNode
 from claude_code_tool import claude_code, claude_code_structured
 
 tools = [claude_code, claude_code_structured]
-llm_with_tools = ChatOpenAI(model="deepseek-v4-pro", base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"), api_key=os.environ["DEEPSEEK_API_KEY"]).bind_tools(tools)
+llm_with_tools = ChatOpenAI(model="deepseek-v4-pro").bind_tools(tools)
 
 graph = StateGraph(AgentState)
 graph.add_node("agent", agent_node)
