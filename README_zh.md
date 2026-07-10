@@ -383,19 +383,30 @@ curl -X POST http://localhost:8000/chat \
 # 非流式 — 代码分析（默认模式）
 curl -X POST http://localhost:8000/deep-agent \
   -H "Content-Type: application/json" \
-  -d '{"message": "分析项目架构"}'
+  -d '{"message": "分析项目架构", "working_dir": "/path/to/project"}'
 
 # 流式 — 代码重构模式
 curl -X POST http://localhost:8000/deep-agent/stream \
   -H "Content-Type: application/json" \
-  -d '{"message": "重构 src/ 下的代码", "mode": "code_refactor"}' \
+  -d '{"message": "重构 src/ 下的代码", "mode": "code_refactor", "working_dir": "."}' \
   --no-buffer
 
-# 自定义配置
+# 完全访问 + 自定义 effort
 curl -X POST http://localhost:8000/deep-agent \
   -H "Content-Type: application/json" \
-  -d '{"message": "全面审查代码质量", "mode": "full_access", "claude_tool_effort": "high"}'
+  -d '{"message": "全面审查代码质量", "mode": "full_access", "claude_tool_effort": "high", "working_dir": "/path/to/project"}'
 ```
+
+**Deep Agent 请求字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `message` | `str` | 必填 | 用户消息 / 任务描述 |
+| `mode` | `str` | `"code_analysis"` | 预设模式：`code_analysis` / `code_refactor` / `full_access` / `none` |
+| `model` | `str \| null` | `null` | 编排层 LLM（默认 `deepseek-v4-pro`） |
+| `working_dir` | `str` | `"."` | Claude Code 工具的工作目录 |
+| `claude_tool_effort` | `str \| null` | `null` | 覆盖 Claude Code effort 级别 |
+| `system_prompt` | `str \| null` | `null` | 自定义系统提示词 |
 
 SSE 事件格式（`/chat/stream` 和 `/deep-agent/stream` 统一）：
 ```

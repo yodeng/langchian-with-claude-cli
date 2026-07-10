@@ -39,15 +39,16 @@ tests/                   # 测试（141 个用例）
 - `bind_tools()` 注入工具描述到 system prompt，Claude Code 原生执行工具
 - `with_structured_output()` 通过 `--json-schema` 约束输出
 - `reset_session()` 清空记忆
+- `working_dir` 参数指定工作目录（默认 `"."`）
 - 默认 timeout: 600s，范围 10-3600s
 
 ### 后端 2: Tool — `claude_code` 系列 (claude_code_tool.py)
 
 `@tool` 装饰的独立工具函数，适合让 LangGraph Agent 在特定步骤上委托给 Claude Code。
 
-- `claude_code` — 基础委托，返回文本
-- `claude_code_structured` — 结构化 JSON 输出（`--json-schema`）
-- `claude_code_isolated` — git worktree 隔离执行
+- `claude_code` — 基础委托，返回文本，支持 `working_dir` 参数
+- `claude_code_structured` — 结构化 JSON 输出（`--json-schema`），支持 `working_dir` 参数
+- `claude_code_isolated` — git worktree 隔离执行，支持 `working_dir` 参数
 - `claude_code_streaming` — 流式输出（返回 `subprocess.Popen`）
 
 ### 后端 3: Skill — `claude-code-cli` (.claude/skills/)
@@ -57,6 +58,24 @@ Claude Code 自身的 skill，让 Claude Code 以子进程方式调用另一个 
 - 子进程隔离（独立 session、独立 worktree）
 - 多级调用（外层 Claude Code 调度内层 Claude Code）
 - 通过符号链接复用核心模块
+
+## Deep Agent 与 API Server
+
+### Deep Agent (`deep_agent.py`)
+
+- `create_claude_deep_agent()` — 创建集成 Claude Code 工具的 deep_agent
+- 支持 `working_dir` 参数，指定 Claude Code 工具的工作目录（默认 `"."`）
+- 4 种预设模式：`code_analysis` / `code_refactor` / `full_access` / `none`
+
+### API Server (`api_server.py`)
+
+FastAPI 服务，提供两种后端端点：
+
+- `/chat` + `/chat/stream` — ChatClaudeCode 对话，支持 `working_dir`
+- `/deep-agent` + `/deep-agent/stream` — Deep Agent 编排，支持 `working_dir`、`mode`、`claude_tool_effort` 等参数
+- `/health`、`/sessions`、`/sessions/{id}` — 健康检查与会话管理
+- 启动：`uvicorn api_server:app --host 0.0.0.0 --port 8000`
+- 交互式文档：http://localhost:8000/docs
 
 ## 技术要点
 

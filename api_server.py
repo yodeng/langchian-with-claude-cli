@@ -16,7 +16,7 @@ ChatClaudeCode 调用:
 Deep Agent 调用:
     curl -X POST http://localhost:8000/deep-agent \
       -H "Content-Type: application/json" \
-      -d '{"message": "分析项目架构"}'
+      -d '{"message": "分析项目架构", "working_dir": "/path/to/project"}'
 """
 
 from __future__ import annotations
@@ -85,6 +85,7 @@ class DeepAgentRequest(BaseModel):
         default=None,
         description="Claude Code 工具 effort 级别",
     )
+    working_dir: str = Field(default=".", description="Claude Code 工具的工作目录")
     system_prompt: str | None = Field(default=None, description="自定义系统提示词")
 
 
@@ -205,6 +206,7 @@ def deep_agent(request: DeepAgentRequest):
         agent = create_claude_deep_agent(
             model=request.model,
             mode=request.mode,
+            working_dir=request.working_dir,
             system_prompt=request.system_prompt,
             claude_tool_effort=request.claude_tool_effort,
         )
@@ -249,6 +251,7 @@ def deep_agent_stream(request: DeepAgentRequest):
             agent = create_claude_deep_agent(
                 model=request.model,
                 mode=request.mode,
+                working_dir=request.working_dir,
                 system_prompt=request.system_prompt,
                 claude_tool_effort=request.claude_tool_effort,
             )

@@ -383,19 +383,30 @@ curl -X POST http://localhost:8000/chat \
 # Non-streaming — code analysis (default mode)
 curl -X POST http://localhost:8000/deep-agent \
   -H "Content-Type: application/json" \
-  -d '{"message": "Analyze the project architecture"}'
+  -d '{"message": "Analyze the project architecture", "working_dir": "/path/to/project"}'
 
-# Streaming — full access mode
+# Streaming — code refactor mode
 curl -X POST http://localhost:8000/deep-agent/stream \
   -H "Content-Type: application/json" \
-  -d '{"message": "重构 src/ 下的代码", "mode": "code_refactor"}' \
+  -d '{"message": "Refactor code under src/", "mode": "code_refactor", "working_dir": "."}' \
   --no-buffer
 
-# Custom mode
+# Full access with custom effort
 curl -X POST http://localhost:8000/deep-agent \
   -H "Content-Type: application/json" \
-  -d '{"message": "全面审查代码质量", "mode": "full_access", "claude_tool_effort": "high"}'
+  -d '{"message": "Comprehensive code quality audit", "mode": "full_access", "claude_tool_effort": "high", "working_dir": "/path/to/project"}'
 ```
+
+**Deep Agent request fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `message` | `str` | required | User message / task description |
+| `mode` | `str` | `"code_analysis"` | Preset mode: `code_analysis` / `code_refactor` / `full_access` / `none` |
+| `model` | `str \| null` | `null` | Orchestration LLM (default: `deepseek-v4-pro`) |
+| `working_dir` | `str` | `"."` | Working directory for Claude Code tools |
+| `claude_tool_effort` | `str \| null` | `null` | Override Claude Code effort level |
+| `system_prompt` | `str \| null` | `null` | Custom system prompt |
 
 SSE event format (same for both `/chat/stream` and `/deep-agent/stream`):
 ```
