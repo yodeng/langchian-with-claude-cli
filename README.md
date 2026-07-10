@@ -316,7 +316,7 @@ Functions: `create_claude_deep_agent()`, `create_code_analysis_agent()`, `create
 
 ## API Server
 
-Expose `ChatClaudeCode` as a REST API with streaming and non-streaming endpoints.
+Expose `ChatClaudeCode` and `deep_agent` as REST API endpoints.
 
 ### Quick Start
 
@@ -330,16 +330,31 @@ Open http://localhost:8000/docs for the interactive Swagger UI.
 
 ### Endpoints
 
+**ChatClaudeCode** — simple conversational LLM:
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/chat` | Non-streaming chat — send a message, get the full response |
-| `POST` | `/chat/stream` | Streaming chat — SSE with real-time text deltas |
-| `GET` | `/health` | Health check with active session count |
-| `GET` | `/sessions` | List active session IDs |
-| `DELETE` | `/sessions/{id}` | Delete a session and free resources |
+| `POST` | `/chat` | Non-streaming chat |
+| `POST` | `/chat/stream` | Streaming chat (SSE) |
+
+**Deep Agent** — orchestrated execution with planning + tools:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/deep-agent` | Non-streaming deep agent |
+| `POST` | `/deep-agent/stream` | Streaming deep agent (SSE) |
+
+**Management:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/sessions` | List active `/chat` sessions |
+| `DELETE` | `/sessions/{id}` | Delete a `/chat` session |
 
 ### Examples
 
+**ChatClaudeCode:**
 ```bash
 # Non-streaming
 curl -X POST http://localhost:8000/chat \
@@ -362,11 +377,30 @@ curl -X POST http://localhost:8000/chat \
   -d '{"message": "now check them for errors", "session_id": "my-session"}'
 ```
 
-SSE event format:
+**Deep Agent:**
+```bash
+# Non-streaming — code analysis (default mode)
+curl -X POST http://localhost:8000/deep-agent \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Analyze the project architecture"}'
+
+# Streaming — full access mode
+curl -X POST http://localhost:8000/deep-agent/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "重构 src/ 下的代码", "mode": "code_refactor"}' \
+  --no-buffer
+
+# Custom mode
+curl -X POST http://localhost:8000/deep-agent \
+  -H "Content-Type: application/json" \
+  -d '{"message": "全面审查代码质量", "mode": "full_access", "claude_tool_effort": "high"}'
+```
+
+SSE event format (same for both `/chat/stream` and `/deep-agent/stream`):
 ```
 data: {"type": "delta", "content": "Hello"}
 data: {"type": "delta", "content": " World"}
-data: {"type": "done", "session_id": "xxx"}
+data: {"type": "done"}
 ```
 
 ---

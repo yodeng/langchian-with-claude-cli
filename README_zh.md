@@ -316,7 +316,7 @@ pip install -e ".[deepagent]"
 
 ## API 服务
 
-将 `ChatClaudeCode` 暴露为 REST API，支持流式和非流式两种调用方式。
+将 `ChatClaudeCode` 和 `deep_agent` 暴露为 REST API 端点。
 
 ### 快速启动
 
@@ -330,16 +330,31 @@ uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
 
 ### 端点
 
+**ChatClaudeCode** — 简单 LLM 对话：
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/chat` | 非流式对话 — 发送消息，返回完整回复 |
-| `POST` | `/chat/stream` | 流式对话 — SSE 实时推送文本片段 |
-| `GET` | `/health` | 健康检查，含活跃会话数 |
-| `GET` | `/sessions` | 列出当前活跃会话 ID |
-| `DELETE` | `/sessions/{id}` | 删除指定会话，释放资源 |
+| `POST` | `/chat` | 非流式对话 |
+| `POST` | `/chat/stream` | 流式对话（SSE）|
+
+**Deep Agent** — 编排执行，含任务规划 + 工具调用：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/deep-agent` | 非流式 Deep Agent |
+| `POST` | `/deep-agent/stream` | 流式 Deep Agent（SSE）|
+
+**管理：**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health` | 健康检查 |
+| `GET` | `/sessions` | 列出 `/chat` 活跃会话 |
+| `DELETE` | `/sessions/{id}` | 删除 `/chat` 会话 |
 
 ### 示例
 
+**ChatClaudeCode：**
 ```bash
 # 非流式调用
 curl -X POST http://localhost:8000/chat \
@@ -362,11 +377,30 @@ curl -X POST http://localhost:8000/chat \
   -d '{"message": "检查有没有错误", "session_id": "my-session"}'
 ```
 
-SSE 事件格式：
+**Deep Agent：**
+```bash
+# 非流式 — 代码分析（默认模式）
+curl -X POST http://localhost:8000/deep-agent \
+  -H "Content-Type: application/json" \
+  -d '{"message": "分析项目架构"}'
+
+# 流式 — 代码重构模式
+curl -X POST http://localhost:8000/deep-agent/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "重构 src/ 下的代码", "mode": "code_refactor"}' \
+  --no-buffer
+
+# 自定义配置
+curl -X POST http://localhost:8000/deep-agent \
+  -H "Content-Type: application/json" \
+  -d '{"message": "全面审查代码质量", "mode": "full_access", "claude_tool_effort": "high"}'
+```
+
+SSE 事件格式（`/chat/stream` 和 `/deep-agent/stream` 统一）：
 ```
 data: {"type": "delta", "content": "你好"}
 data: {"type": "delta", "content": "，这是分析结果"}
-data: {"type": "done", "session_id": "xxx"}
+data: {"type": "done"}
 ```
 
 ---
