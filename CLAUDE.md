@@ -9,6 +9,7 @@
 ```
 chat_claude_code.py      # 后端 1: ChatClaudeCode — BaseChatModel 子类
 claude_code_tool.py      # 后端 2: claude_code 系列 — LangChain @tool 封装
+deep_agent.py            # Deep Agent 集成 — deep_agent + Claude Code 编排
 pyproject.toml           # 项目配置，依赖声明
 README.md                # 英文 README（默认）
 README_zh.md             # 中文 README
