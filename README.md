@@ -25,7 +25,8 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
 
 - Python >= 3.10
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) >= 2.1.162
-- `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables (required when using `ChatOpenAI` backend)
+- `OPENAI_API_KEY` and `OPENAI_BASE_URL` environment variables (required for `ChatOpenAI` backend)
+- `OPENAI_MODEL` environment variable (optional, defaults to `deepseek-v4-pro`)
 
 ### Install
 
@@ -219,7 +220,7 @@ from langgraph.prebuilt import ToolNode
 from claude_code_tool import claude_code, claude_code_structured
 
 tools = [claude_code, claude_code_structured]
-llm_with_tools = ChatOpenAI(model="deepseek-v4-pro").bind_tools(tools)
+llm_with_tools = ChatOpenAI(model=os.environ.get("OPENAI_MODEL", "deepseek-v4-pro")).bind_tools(tools)
 
 graph = StateGraph(AgentState)
 graph.add_node("agent", agent_node)

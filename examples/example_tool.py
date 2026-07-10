@@ -54,7 +54,7 @@ def example_basic_delegation():
     print("=" * 60)
 
     llm = ChatOpenAI(
-        model="deepseek-v4-pro",
+        model=os.environ.get("OPENAI_MODEL", "deepseek-v4-pro"),
         temperature=0,
     )
 
@@ -282,7 +282,7 @@ def example_full_agent():
     print("示例 4: 完整 Agent — 代码质量审查")
     print("=" * 60)
 
-    llm = ChatOpenAI(model="deepseek-v4-pro", temperature=0)
+    llm = ChatOpenAI(model=os.environ.get("OPENAI_MODEL", "deepseek-v4-pro"), temperature=0)
 
     tools = [
         claude_code,
