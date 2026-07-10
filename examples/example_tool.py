@@ -55,7 +55,7 @@ def example_basic_delegation():
 
     llm = ChatOpenAI(
         model="deepseek-v4-pro",
-        base_url="https://api.deepseek.com",
+        base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         api_key=os.environ["DEEPSEEK_API_KEY"],
         temperature=0,
     )
@@ -284,7 +284,7 @@ def example_full_agent():
     print("示例 4: 完整 Agent — 代码质量审查")
     print("=" * 60)
 
-    llm = ChatOpenAI(model="deepseek-v4-pro", base_url="https://api.deepseek.com", api_key=os.environ["DEEPSEEK_API_KEY"], temperature=0)
+    llm = ChatOpenAI(model="deepseek-v4-pro", base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"), api_key=os.environ["DEEPSEEK_API_KEY"], temperature=0)
 
     tools = [
         claude_code,
