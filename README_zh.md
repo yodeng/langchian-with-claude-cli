@@ -12,6 +12,7 @@
   - [后端 2: Tool — `claude_code` 系列](#后端-2-tool--claude_code-系列)
   - [后端 3: Skill — `claude-code-cli`](#后端-3-skill--claude-code-cli)
 - [Deep Agent 集成](#deep-agent-集成)
+- [API 服务](#api-服务)
 - [vs `deep_agent`](#vs-deep_agent)
 - [完整工作流示例](#完整工作流示例)
 - [配置参数参考](#配置参数参考)
@@ -41,6 +42,9 @@ pip install -e ".[deepagent]"
 
 # 运行示例
 pip install -e ".[examples]"
+
+# 作为 API 服务运行
+pip install -e ".[api]"
 ```
 
 核心依赖：`langchain-core >= 1.0`、`pydantic >= 2.0`。
@@ -310,6 +314,63 @@ pip install -e ".[deepagent]"
 
 ---
 
+## API 服务
+
+将 `ChatClaudeCode` 暴露为 REST API，支持流式和非流式两种调用方式。
+
+### 快速启动
+
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8000
+# 或启用自动重载：
+uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+```
+
+打开 http://localhost:8000/docs 查看交互式 Swagger 文档。
+
+### 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/chat` | 非流式对话 — 发送消息，返回完整回复 |
+| `POST` | `/chat/stream` | 流式对话 — SSE 实时推送文本片段 |
+| `GET` | `/health` | 健康检查，含活跃会话数 |
+| `GET` | `/sessions` | 列出当前活跃会话 ID |
+| `DELETE` | `/sessions/{id}` | 删除指定会话，释放资源 |
+
+### 示例
+
+```bash
+# 非流式调用
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "分析项目结构", "working_dir": "."}'
+
+# 流式调用（SSE）
+curl -X POST http://localhost:8000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "解释这个代码库"}' \
+  --no-buffer
+
+# 多轮对话
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "列出所有 Python 文件", "session_id": "my-session"}'
+
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "检查有没有错误", "session_id": "my-session"}'
+```
+
+SSE 事件格式：
+```
+data: {"type": "delta", "content": "你好"}
+data: {"type": "delta", "content": "，这是分析结果"}
+data: {"type": "done", "session_id": "xxx"}
+```
+
+---
+
 ## vs `deep_agent`
 
 `langchain-with-claude-cli` 和 LangChain 的 [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) 都能构建强大的 Agent，但定位完全不同：
@@ -450,8 +511,9 @@ langchain-with-claude-cli/
 ├── tests/                      # 测试套件（141 个用例）
 │   ├── test_chat_claude_code.py
 │   └── test_claude_code_tool.py
-└── .claude/skills/             # 后端 3: Claude Code skill 系统
-    └── claude-code-cli/        #   skill 定义 + 符号链接
+├── .claude/skills/             # 后端 3: Claude Code skill 系统
+│   └── claude-code-cli/        #   skill 定义 + 符号链接
+└── api_server.py               # FastAPI 服务（流式 + 非流式）
 ```
 
 ---

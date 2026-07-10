@@ -12,6 +12,7 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
   - [Backend 2: Tool — `claude_code` Series](#backend-2-tool--claude_code-series)
   - [Backend 3: Skill — `claude-code-cli`](#backend-3-skill--claude-code-cli)
 - [Deep Agent Integration](#deep-agent-integration)
+- [API Server](#api-server)
 - [vs `deep_agent`](#vs-deep_agent)
 - [Complete Workflow Examples](#complete-workflow-examples)
 - [Configuration Reference](#configuration-reference)
@@ -41,6 +42,9 @@ pip install -e ".[deepagent]"
 
 # With examples
 pip install -e ".[examples]"
+
+# Run as API server
+pip install -e ".[api]"
 ```
 
 Core dependencies: `langchain-core >= 1.0`, `pydantic >= 2.0`.
@@ -310,6 +314,63 @@ Functions: `create_claude_deep_agent()`, `create_code_analysis_agent()`, `create
 
 ---
 
+## API Server
+
+Expose `ChatClaudeCode` as a REST API with streaming and non-streaming endpoints.
+
+### Quick Start
+
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8000
+# or with auto-reload:
+uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Open http://localhost:8000/docs for the interactive Swagger UI.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/chat` | Non-streaming chat — send a message, get the full response |
+| `POST` | `/chat/stream` | Streaming chat — SSE with real-time text deltas |
+| `GET` | `/health` | Health check with active session count |
+| `GET` | `/sessions` | List active session IDs |
+| `DELETE` | `/sessions/{id}` | Delete a session and free resources |
+
+### Examples
+
+```bash
+# Non-streaming
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Analyze the project structure", "working_dir": "."}'
+
+# Streaming (SSE)
+curl -X POST http://localhost:8000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Explain this codebase"}' \
+  --no-buffer
+
+# Multi-turn conversation
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "list all Python files", "session_id": "my-session"}'
+
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "now check them for errors", "session_id": "my-session"}'
+```
+
+SSE event format:
+```
+data: {"type": "delta", "content": "Hello"}
+data: {"type": "delta", "content": " World"}
+data: {"type": "done", "session_id": "xxx"}
+```
+
+---
+
 ## vs `deep_agent`
 
 Both `langchain-with-claude-cli` and LangChain's [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) let you build powerful agents, but they serve fundamentally different needs:
@@ -450,8 +511,9 @@ langchain-with-claude-cli/
 ├── tests/                      # Test suite (141 cases)
 │   ├── test_chat_claude_code.py
 │   └── test_claude_code_tool.py
-└── .claude/skills/             # Backend 3: Claude Code skill system
-    └── claude-code-cli/        #   Skill definition + symlinks
+├── .claude/skills/             # Backend 3: Claude Code skill system
+│   └── claude-code-cli/        #   Skill definition + symlinks
+└── api_server.py               # FastAPI server (streaming + non-streaming)
 ```
 
 ---
