@@ -298,6 +298,7 @@ def claude_code(
     session_id: str = "",
     allowed_tools: list[str] | None = None,
     effort: str = "medium",
+    working_dir: str = ".",
 ) -> str:
     """
     将任务委托给 Claude Code CLI 执行。适合需要以下能力的步骤：
@@ -313,16 +314,17 @@ def claude_code(
         allowed_tools: 允许的工具列表。空列表 = 使用默认限制。
                        例如: ["Read", "Write", "Bash(git diff)", "Bash(git log)"]
         effort: 努力级别。low=快速 / medium=平衡 / high=深入
+        working_dir: 工作目录，Claude Code 将在此目录下执行。默认当前目录。
 
     Returns:
         Claude Code 的执行结果（文本）
     """
-    session = get_or_create_session(session_id) if session_id else None
+    session = get_or_create_session(session_id, working_dir=working_dir) if session_id else None
 
     result = _run_claude_code(
         task,
         session=session,
-        working_dir=".",
+        working_dir=working_dir,
         allowed_tools=allowed_tools if allowed_tools else None,
         effort=effort,
         skip_permissions=True,  # Agent 调用场景下跳过权限确认
@@ -340,6 +342,7 @@ def claude_code_structured(
     output_schema: dict,
     session_id: str = "",
     effort: str = "medium",
+    working_dir: str = ".",
 ) -> str:
     """
     将任务委托给 Claude Code 并要求结构化 JSON 输出。
@@ -351,16 +354,17 @@ def claude_code_structured(
                        例如: {"type": "object", "properties": {"files": {"type": "array", ...}}}
         session_id: 会话 ID，同 claude_code
         effort: 努力级别
+        working_dir: 工作目录，Claude Code 将在此目录下执行。默认当前目录。
 
     Returns:
         JSON 字符串（符合 output_schema 约束）
     """
-    session = get_or_create_session(session_id) if session_id else None
+    session = get_or_create_session(session_id, working_dir=working_dir) if session_id else None
 
     result = _run_claude_code(
         task,
         session=session,
-        working_dir=".",
+        working_dir=working_dir,
         json_schema=output_schema,
         effort=effort,
         skip_permissions=True,
@@ -380,6 +384,7 @@ def claude_code_isolated(
     task: str,
     context_files: list[str],
     effort: str = "high",
+    working_dir: str = ".",
 ) -> str:
     """
     在隔离的 git worktree 中将任务委托给 Claude Code 执行。
@@ -389,13 +394,14 @@ def claude_code_isolated(
         task: 详细的任务描述
         context_files: 需要授权访问的文件/目录路径列表
         effort: 努力级别
+        working_dir: 工作目录，Claude Code 将在此目录下执行。默认当前目录。
 
     Returns:
         Claude Code 的执行结果
     """
     result = _run_claude_code(
         task,
-        working_dir=".",
+        working_dir=working_dir,
         use_worktree=True,
         context_files=context_files,
         effort=effort,

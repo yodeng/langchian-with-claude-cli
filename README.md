@@ -299,6 +299,7 @@ for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
 agent = create_claude_deep_agent(
     model="deepseek-v4-pro",
     mode="code_refactor",
+    working_dir="/path/to/project",  # target working directory
     claude_tool_effort="high",
     claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
 )
@@ -520,6 +521,7 @@ python examples/example_chat_model.py
 | `claude_tool_effort` | `str \| None` | per mode | Override effort: `low` / `medium` / `high` / `xhigh` / `max` |
 | `claude_tool_allowed` | `list[str] \| None` | per mode | Override allowed tools for `claude_code` |
 | `system_prompt` | `str \| None` | auto-generated | Custom system prompt |
+| `working_dir` | `str` | `"."` | Working directory for Claude Code tool execution |
 | `permissions` | `list \| None` | `None` | Filesystem permission rules |
 | `backend` | `Any \| None` | `None` | deep_agent backend (storage/sandbox) |
 | `subagents` | `Sequence \| None` | `None` | Additional sub-agent specs |

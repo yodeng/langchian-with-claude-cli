@@ -299,6 +299,7 @@ for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
 agent = create_claude_deep_agent(
     model="deepseek-v4-pro",
     mode="code_refactor",
+    working_dir="/path/to/project",  # 目标工作目录
     claude_tool_effort="high",
     claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
 )
@@ -520,6 +521,7 @@ python examples/example_chat_model.py
 | `claude_tool_effort` | `str \| None` | 按 mode | 覆盖 effort 级别：`low` / `medium` / `high` / `xhigh` / `max` |
 | `claude_tool_allowed` | `list[str] \| None` | 按 mode | 覆盖 `claude_code` 的允许工具列表 |
 | `system_prompt` | `str \| None` | 自动生成 | 自定义系统提示词 |
+| `working_dir` | `str` | `"."` | Claude Code 工具执行的工作目录 |
 | `permissions` | `list \| None` | `None` | 文件系统权限规则 |
 | `backend` | `Any \| None` | `None` | deep_agent 后端（存储/沙箱） |
 | `subagents` | `Sequence \| None` | `None` | 额外的子 agent 定义 |

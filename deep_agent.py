@@ -113,6 +113,7 @@ def _make_preset_tool_list(
     mode: str,
     effort_override: str | None = None,
     allowed_override: list[str] | None = None,
+    working_dir: str = ".",
 ) -> list[BaseTool]:
     """根据预设模式构建工具列表"""
     from claude_code_tool import claude_code, claude_code_isolated, claude_code_structured
@@ -124,6 +125,7 @@ def _make_preset_tool_list(
         if tool_name == "claude_code":
             t = _copy_tool(claude_code)
             config = dict(preset.get("claude_code_config", {}))
+            config["working_dir"] = working_dir
             if effort_override is not None:
                 config["effort"] = effort_override
             if allowed_override is not None:
@@ -135,6 +137,7 @@ def _make_preset_tool_list(
         elif tool_name == "claude_code_structured":
             t = _copy_tool(claude_code_structured)
             config = dict(preset.get("claude_code_structured_config", {}))
+            config["working_dir"] = working_dir
             if effort_override is not None:
                 config["effort"] = effort_override
             if config:
@@ -144,6 +147,7 @@ def _make_preset_tool_list(
         elif tool_name == "claude_code_isolated":
             t = _copy_tool(claude_code_isolated)
             config = dict(preset.get("claude_code_isolated_config", {}))
+            config["working_dir"] = working_dir
             if effort_override is not None:
                 config["effort"] = effort_override
             if config:
@@ -289,6 +293,7 @@ def create_claude_deep_agent(
     tools: Sequence[BaseTool] | None = None,
     mode: str = "code_analysis",
     system_prompt: str | None = None,
+    working_dir: str = ".",
     claude_tool_effort: str | None = None,
     claude_tool_allowed: list[str] | None = None,
     permissions: list[Any] | None = None,
@@ -323,6 +328,10 @@ def create_claude_deep_agent(
             （默认 ``"code_analysis"``）
 
         system_prompt: 自定义系统提示。不传则根据 mode 自动生成。
+            （可选）
+
+        working_dir: Claude Code 工具的工作目录。所有 Claude Code
+            工具调用都将在此目录下执行。默认 ``"."``（当前目录）。
             （可选）
 
         claude_tool_effort: 覆盖 Claude Code 工具的 effort 级别。
@@ -420,6 +429,7 @@ def create_claude_deep_agent(
             mode=mode,
             effort_override=claude_tool_effort,
             allowed_override=claude_tool_allowed,
+            working_dir=working_dir,
         )
         all_tools.extend(claude_tools)
         logger.debug("已注册 Claude Code 工具（mode=%s）: %s", mode,
