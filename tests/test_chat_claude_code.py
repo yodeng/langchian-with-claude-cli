@@ -458,11 +458,11 @@ class TestBuildCommand:
         assert "Bash(curl *)" in cmd[idx:]
 
     def test_model_and_max_tokens(self, llm):
-        llm.model = "claude-sonnet-4-6"
+        llm.model = "deepseek-v4-pro"
         llm.max_tokens = 4096
         cmd = llm._build_command("task")
         assert "--model" in cmd
-        assert "claude-sonnet-4-6" in cmd
+        assert "deepseek-v4-pro" in cmd
         assert "--max-tokens" in cmd
         assert "4096" in cmd
 
@@ -586,11 +586,11 @@ class TestChatClaudeCodeBasic:
         assert llm._llm_type == "claude-code-cli"
 
     def test_identifying_params(self):
-        llm = ChatClaudeCode(working_dir="/test", effort="high", model="claude-sonnet-4-6")
+        llm = ChatClaudeCode(working_dir="/test", effort="high", model="deepseek-v4-pro")
         params = llm._identifying_params
         assert params["working_dir"] == "/test"
         assert params["effort"] == "high"
-        assert params["model"] == "claude-sonnet-4-6"
+        assert params["model"] == "deepseek-v4-pro"
 
     def test_reset_session_changes_id(self):
         llm = ChatClaudeCode()

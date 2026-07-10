@@ -8,7 +8,7 @@ Claude Code 负责执行 — 文件操作、代码分析、shell 命令、git �
     from deep_agent import create_claude_deep_agent
 
     # 模式 A：标准 LLM 编排 + Claude Code 工具执行（推荐）
-    agent = create_claude_deep_agent(model="claude-sonnet-4-6", mode="code_analysis")
+    agent = create_claude_deep_agent(model="deepseek-v4-pro", mode="code_analysis")
     result = agent.invoke({"messages": [{"role": "user", "content": "分析项目架构"}]})
 
     # 模式 B：ChatClaudeCode 本身就是 LLM 后端
@@ -308,9 +308,9 @@ def create_claude_deep_agent(
 
     Args:
         model: LLM 后端。
-            支持 ``"provider:model"`` 格式字符串（如 ``"claude-sonnet-4-6"``），
+            支持 ``"provider:model"`` 格式字符串（如 ``"deepseek-v4-pro"``），
             或任何 ``BaseChatModel`` 实例（包括 ``ChatClaudeCode``）。
-            默认使用 ``"claude-sonnet-4-6"``。
+            默认使用 ``"deepseek-v4-pro"``。
 
         tools: 额外的 LangChain 工具，与 Claude Code 工具合并后注册。
             （可选）
@@ -372,7 +372,7 @@ def create_claude_deep_agent(
             from deep_agent import create_claude_deep_agent
 
             agent = create_claude_deep_agent(
-                model="claude-sonnet-4-6",
+                model="deepseek-v4-pro",
                 mode="code_analysis",
             )
             result = agent.invoke({
@@ -395,7 +395,7 @@ def create_claude_deep_agent(
         **自定义配置** ::
 
             agent = create_claude_deep_agent(
-                model="claude-sonnet-4-6",
+                model="deepseek-v4-pro",
                 mode="code_refactor",
                 claude_tool_effort="high",
                 claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
@@ -410,7 +410,7 @@ def create_claude_deep_agent(
 
     # ── 模型默认值 ──
     if model is None:
-        model = "claude-sonnet-4-6"
+        model = "deepseek-v4-pro"
 
     # ── 构建工具列表 ──
     all_tools: list[BaseTool] = list(tools) if tools else []

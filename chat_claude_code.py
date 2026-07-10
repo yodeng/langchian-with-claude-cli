@@ -1,7 +1,7 @@
 """
 ChatClaudeCode — 将 Claude Code CLI 作为 LangChain BaseChatModel 后端
 
-提供与 ChatAnthropic/ChatOpenAI 兼容的调用接口，底层通过 subprocess 调用 claude CLI。
+提供与 ChatOpenAI 兼容的调用接口，底层通过 subprocess 调用 claude CLI。
 
 核心能力：
   - 同步/异步生成：_generate / _agenerate

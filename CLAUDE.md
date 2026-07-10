@@ -29,7 +29,7 @@ tests/                   # 测试（141 个用例）
 
 ### 后端 1: ChatModel — `ChatClaudeCode` (chat_claude_code.py)
 
-继承 `BaseChatModel`，与 `ChatAnthropic`/`ChatOpenAI` 接口兼容，适合做 Agent 的 LLM 节点。
+继承 `BaseChatModel`，与 `ChatOpenAI` 接口兼容，适合做 Agent 的 LLM 节点。
 
 - 底层通过 `claude -p` 子进程调用，拥有完整文件系统、shell、git 能力
 - `_generate` / `_stream` / `_agenerate` / `_astream` 全部实现

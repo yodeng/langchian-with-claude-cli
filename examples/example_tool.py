@@ -17,7 +17,7 @@ from typing import Annotated, TypedDict
 # 确保能导入父目录的 claude_code_tool
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -53,8 +53,10 @@ def example_basic_delegation():
     print("示例 1: 基础委托 — 代码分析 + 报告生成")
     print("=" * 60)
 
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
+    llm = ChatOpenAI(
+        model="deepseek-v4-pro",
+        base_url="https://api.deepseek.com",
+        api_key=os.environ["DEEPSEEK_API_KEY"],
         temperature=0,
     )
 
@@ -282,7 +284,7 @@ def example_full_agent():
     print("示例 4: 完整 Agent — 代码质量审查")
     print("=" * 60)
 
-    llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0)
+    llm = ChatOpenAI(model="deepseek-v4-pro", base_url="https://api.deepseek.com", api_key=os.environ["DEEPSEEK_API_KEY"], temperature=0)
 
     tools = [
         claude_code,

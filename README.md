@@ -25,6 +25,7 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
 
 - Python >= 3.10
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) >= 2.1.162
+- `DEEPSEEK_API_KEY` environment variable (required when using `ChatOpenAI` backend)
 
 ### Install
 
@@ -47,7 +48,7 @@ Core dependencies: `langchain-core >= 1.0`, `pydantic >= 2.0`.
 
 ### Backend 1: ChatModel — `ChatClaudeCode`
 
-Extends `BaseChatModel` with full `ChatAnthropic`/`ChatOpenAI` API compatibility. Ideal as the LLM node in a LangGraph agent.
+Extends `BaseChatModel` with full `ChatOpenAI` API compatibility. Ideal as the LLM node in a LangGraph agent.
 
 **Highlights:**
 - Invokes `claude -p` as a subprocess with full filesystem, shell, and git access
@@ -218,7 +219,7 @@ from langgraph.prebuilt import ToolNode
 from claude_code_tool import claude_code, claude_code_structured
 
 tools = [claude_code, claude_code_structured]
-llm_with_tools = ChatAnthropic(model="claude-sonnet-4-6").bind_tools(tools)
+llm_with_tools = ChatOpenAI(model="deepseek-v4-pro", base_url="https://api.deepseek.com", api_key=os.environ["DEEPSEEK_API_KEY"]).bind_tools(tools)
 
 graph = StateGraph(AgentState)
 graph.add_node("agent", agent_node)
@@ -267,7 +268,7 @@ The `deep_agent` module combines LangChain's [`deep_agent`](https://docs.langcha
 from deep_agent import create_claude_deep_agent
 
 # Pattern A: Standard LLM orchestrates, Claude Code executes (recommended)
-agent = create_claude_deep_agent(model="claude-sonnet-4-6", mode="code_analysis")
+agent = create_claude_deep_agent(model="deepseek-v4-pro", mode="code_analysis")
 result = agent.invoke({
     "messages": [{"role": "user", "content": "Analyze the project architecture"}]
 })
@@ -281,7 +282,7 @@ agent = create_claude_deep_agent(
 
 # Shortcut functions
 from deep_agent import create_code_analysis_agent, create_code_refactor_agent
-agent = create_code_refactor_agent(model="claude-sonnet-4-6")
+agent = create_code_refactor_agent(model="deepseek-v4-pro")
 
 # Streaming
 for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
@@ -289,7 +290,7 @@ for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
 
 # Custom configuration
 agent = create_claude_deep_agent(
-    model="claude-sonnet-4-6",
+    model="deepseek-v4-pro",
     mode="code_refactor",
     claude_tool_effort="high",
     claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
@@ -415,7 +416,7 @@ python examples/example_chat_model.py
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `model` | `str \| BaseChatModel \| None` | `"claude-sonnet-4-6"` | LLM backend — string, `ChatClaudeCode`, or any `BaseChatModel` |
+| `model` | `str \| BaseChatModel \| None` | `"deepseek-v4-pro"` | LLM backend — string, `ChatClaudeCode`, or any `BaseChatModel` |
 | `mode` | `str` | `"code_analysis"` | Preset mode: `code_analysis` / `code_refactor` / `full_access` / `none` |
 | `tools` | `Sequence \| None` | `None` | Additional LangChain tools merged with Claude Code tools |
 | `claude_tool_effort` | `str \| None` | per mode | Override effort: `low` / `medium` / `high` / `xhigh` / `max` |

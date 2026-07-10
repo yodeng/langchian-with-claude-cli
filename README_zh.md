@@ -25,6 +25,7 @@
 
 - Python >= 3.10
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) >= 2.1.162
+- `DEEPSEEK_API_KEY` 环境变量（使用 `ChatOpenAI` 后端时需要）
 
 ### 安装项目
 
@@ -47,7 +48,7 @@ pip install -e ".[examples]"
 
 ### 后端 1: ChatModel — `ChatClaudeCode`
 
-继承 `BaseChatModel`，与 `ChatAnthropic`/`ChatOpenAI` 接口完全兼容，适合作为 LangGraph Agent 的 LLM 节点。
+继承 `BaseChatModel`，与 `ChatOpenAI` 接口完全兼容，适合作为 LangGraph Agent 的 LLM 节点。
 
 **特点：**
 - 底层通过 `claude -p` 子进程调用，拥有完整文件系统、shell、git 能力
@@ -218,7 +219,7 @@ from langgraph.prebuilt import ToolNode
 from claude_code_tool import claude_code, claude_code_structured
 
 tools = [claude_code, claude_code_structured]
-llm_with_tools = ChatAnthropic(model="claude-sonnet-4-6").bind_tools(tools)
+llm_with_tools = ChatOpenAI(model="deepseek-v4-pro", base_url="https://api.deepseek.com", api_key=os.environ["DEEPSEEK_API_KEY"]).bind_tools(tools)
 
 graph = StateGraph(AgentState)
 graph.add_node("agent", agent_node)
@@ -267,7 +268,7 @@ result = llm.invoke("分析这个项目的架构")
 from deep_agent import create_claude_deep_agent
 
 # 模式 A：标准 LLM 编排 + Claude Code 工具执行（推荐）
-agent = create_claude_deep_agent(model="claude-sonnet-4-6", mode="code_analysis")
+agent = create_claude_deep_agent(model="deepseek-v4-pro", mode="code_analysis")
 result = agent.invoke({
     "messages": [{"role": "user", "content": "分析项目架构"}]
 })
@@ -281,7 +282,7 @@ agent = create_claude_deep_agent(
 
 # 快捷函数
 from deep_agent import create_code_analysis_agent, create_code_refactor_agent
-agent = create_code_refactor_agent(model="claude-sonnet-4-6")
+agent = create_code_refactor_agent(model="deepseek-v4-pro")
 
 # 流式调用
 for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
@@ -289,7 +290,7 @@ for chunk, meta in agent.stream({"messages": [...]}, stream_mode="messages"):
 
 # 自定义配置
 agent = create_claude_deep_agent(
-    model="claude-sonnet-4-6",
+    model="deepseek-v4-pro",
     mode="code_refactor",
     claude_tool_effort="high",
     claude_tool_allowed=["Read", "Write", "Edit", "Bash(git *)"],
@@ -415,7 +416,7 @@ python examples/example_chat_model.py
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `model` | `str \| BaseChatModel \| None` | `"claude-sonnet-4-6"` | LLM 后端，支持字符串或 `ChatClaudeCode` 实例 |
+| `model` | `str \| BaseChatModel \| None` | `"deepseek-v4-pro"` | LLM 后端，支持字符串或 `ChatClaudeCode` 实例 |
 | `mode` | `str` | `"code_analysis"` | 预设模式：`code_analysis` / `code_refactor` / `full_access` / `none` |
 | `tools` | `Sequence \| None` | `None` | 额外的 LangChain 工具，与 Claude Code 工具合并 |
 | `claude_tool_effort` | `str \| None` | 按 mode | 覆盖 effort 级别：`low` / `medium` / `high` / `xhigh` / `max` |
