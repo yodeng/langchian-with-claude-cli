@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import MagicMock
 from typing import Any
 
 import pytest
