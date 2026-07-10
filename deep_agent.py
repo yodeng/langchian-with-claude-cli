@@ -421,6 +421,13 @@ def create_claude_deep_agent(
     if model is None:
         model = "deepseek-v4-pro"
 
+    # 字符串模型名通过 ChatOpenAI 调用（兼容 OpenAI-compatible API），
+    # 避免 LangChain init_chat_model() 根据名称自动匹配到
+    # ChatDeepSeek / langchain-deepseek 等非预期 provider。
+    if isinstance(model, str):
+        from langchain_openai import ChatOpenAI
+        model = ChatOpenAI(model=model)
+
     # ── 构建工具列表 ──
     all_tools: list[BaseTool] = list(tools) if tools else []
 
@@ -471,7 +478,7 @@ def create_claude_deep_agent(
     agent = create_deep_agent(**deep_kwargs)
 
     logger.info("Deep Agent 创建成功: model=%s, mode=%s, tools=%d",
-                model if isinstance(model, str) else type(model).__name__,
+                getattr(model, "model_name", type(model).__name__),
                 mode,
                 len(all_tools))
 

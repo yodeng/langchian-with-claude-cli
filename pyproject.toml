@@ -29,7 +29,6 @@ agents = [
 ]
 deepagent = [
     "deepagents>=0.5.0",
-    "langchain-deepseek>=1.0",
 ]
 examples = [
     "langchain-openai>=1.0",
