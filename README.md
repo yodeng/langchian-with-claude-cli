@@ -253,6 +253,8 @@ result = llm.invoke("Analyze the project architecture")
 
 The `deep_agent` module combines LangChain's [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) orchestration framework with Claude Code CLI execution. `deep_agent` handles planning, task decomposition, and sub-agent scheduling, while Claude Code handles file operations, code analysis, and shell commands.
 
+> **Model separation:** The default model `"deepseek-v4-pro"` is used by the LangChain orchestration layer (planning, reasoning). The Claude Code CLI execution layer uses its own configured model — the two are independent. Changing the orchestration model does not affect which model Claude Code uses for file operations and code analysis.
+
 ### Preset Modes
 
 | Mode | Description | Claude Code Tools |

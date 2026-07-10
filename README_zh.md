@@ -253,6 +253,8 @@ result = llm.invoke("分析这个项目的架构")
 
 `deep_agent` 模块将 LangChain 的 [`deep_agent`](https://docs.langchain.com/oss/python/deepagents/quickstart) 编排框架与 Claude Code CLI 执行能力结合。`deep_agent` 负责任务规划、拆解、子 agent 调度；Claude Code 负责文件操作、代码分析、shell 命令。
 
+> **模型分离说明：** 默认模型 `"deepseek-v4-pro"` 仅用于 LangChain 编排层（规划、推理），Claude Code CLI 执行层使用自身配置的模型，两者相互独立。修改编排层模型不会影响 Claude Code 执行文件操作和代码分析时使用的模型。
+
 ### 预设模式
 
 | 模式 | 说明 | Claude Code 工具 |
