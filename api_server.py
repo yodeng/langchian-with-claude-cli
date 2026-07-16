@@ -36,8 +36,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 logger = logging.getLogger("api_server")
 
 app = FastAPI(
-    title="Claude Code API",
-    description="ChatClaudeCode 与 Deep Agent 的 REST API 接口",
+    title="Claude Code + Hermes Agent API",
+    description="ChatClaudeCode、Deep Agent 与 Hermes Agent 的 REST API 接口",
     version="1.0.0",
 )
 
@@ -104,6 +104,48 @@ class DeepAgentResponse(BaseModel):
     mode: str = Field(..., description="使用的模式")
 
 
+class HermesAgentRequest(BaseModel):
+    """Hermes Agent 对话请求"""
+
+    message: str = Field(..., description="用户消息/任务描述")
+    session_id: str | None = Field(
+        default=None,
+        description="会话 ID，不传则自动创建新会话",
+    )
+    base_url: str = Field(
+        default="http://localhost:30000/v1",
+        description="Hermes API 端点地址",
+    )
+    api_key: str | None = Field(default=None, description="API 密钥")
+    model: str = Field(default="", description="模型名称，默认使用 Hermes 配置")
+    max_iterations: int = Field(
+        default=90, ge=1, le=500, description="最大工具调用轮次"
+    )
+    working_dir: str = Field(default=".", description="工作目录")
+
+
+class HermesDeepAgentRequest(BaseModel):
+    """Hermes + Deep Agent 编排请求"""
+
+    message: str = Field(..., description="用户消息/任务描述")
+    mode: str = Field(
+        default="code_analysis",
+        description="预设模式: code_analysis/code_refactor/full_access/none",
+    )
+    base_url: str = Field(
+        default="http://localhost:30000/v1",
+        description="Hermes API 端点地址",
+    )
+    api_key: str | None = Field(default=None, description="API 密钥")
+    hermes_model: str = Field(default="", description="Hermes Agent 使用的模型")
+    claude_tool_effort: str | None = Field(
+        default=None,
+        description="Claude Code 工具 effort 级别",
+    )
+    working_dir: str = Field(default=".", description="工作目录")
+    system_prompt: str | None = Field(default=None, description="自定义系统提示词")
+
+
 # ═══════════════════════════════════════════════════════════════
 # Session 管理（仅 /chat 端点用）
 # ═══════════════════════════════════════════════════════════════
@@ -136,7 +178,11 @@ def _get_or_create_llm(request: ChatRequest) -> tuple[str, ChatClaudeCode]:
 @app.get("/health")
 def health():
     """健康检查"""
-    return {"status": "ok", "active_sessions": len(_sessions)}
+    return {
+        "status": "ok",
+        "active_chat_sessions": len(_sessions),
+        "active_hermes_sessions": len(_hermes_sessions),
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -280,23 +326,205 @@ def deep_agent_stream(request: DeepAgentRequest):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 会话管理（仅 /chat 端点）
+# /hermes-agent — Hermes Agent 对话
+# ═══════════════════════════════════════════════════════════════
+
+_hermes_sessions: dict[str, Any] = {}
+
+
+def _get_or_create_hermes(request: HermesAgentRequest):
+    """获取或创建 Hermes Agent 会话。"""
+    if request.session_id and request.session_id in _hermes_sessions:
+        return request.session_id, _hermes_sessions[request.session_id]
+
+    from chat_hermes_agent import ChatHermesAgent
+
+    sid = request.session_id or str(uuid.uuid4())
+    llm = ChatHermesAgent(
+        base_url=request.base_url,
+        api_key=request.api_key,
+        model=request.model,
+        max_iterations=request.max_iterations,
+        working_dir=request.working_dir,
+    )
+    _hermes_sessions[sid] = llm
+    return sid, llm
+
+
+@app.post("/hermes-agent", response_model=ChatResponse)
+def hermes_agent(request: HermesAgentRequest):
+    """非流式 Hermes Agent 对话。"""
+    sid, llm = _get_or_create_hermes(request)
+
+    try:
+        result = llm.invoke([HumanMessage(content=request.message)])
+    except Exception as e:
+        logger.error("Hermes Agent 调用失败: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return ChatResponse(
+        content=str(result.content),
+        session_id=sid,
+        usage=getattr(result, "usage_metadata", None),
+    )
+
+
+@app.post("/hermes-agent/stream")
+def hermes_agent_stream(request: HermesAgentRequest):
+    """流式 Hermes Agent 对话（SSE）。"""
+    sid, llm = _get_or_create_hermes(request)
+
+    def event_generator():
+        try:
+            for chunk in llm.stream([HumanMessage(content=request.message)]):
+                if chunk.content:
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk.content})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': sid})}\n\n"
+        except Exception as e:
+            logger.error("Hermes Agent 流式调用失败: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# /hermes-agent/deep — Hermes + Deep Agent 编排
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.post("/hermes-agent/deep", response_model=DeepAgentResponse)
+def hermes_agent_deep(request: HermesDeepAgentRequest):
+    """非流式 Hermes + Deep Agent 编排。
+
+    使用 Hermes Agent 作为 LLM 后端，结合 deep_agent 编排和
+    Claude Code 工具执行。
+    """
+    try:
+        from hermes_agent import create_hermes_agent
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="需要安装 deepagents 和 hermes-agent 依赖",
+        )
+
+    try:
+        agent = create_hermes_agent(
+            mode=request.mode,
+            base_url=request.base_url,
+            api_key=request.api_key,
+            hermes_model=request.hermes_model,
+            working_dir=request.working_dir,
+            system_prompt=request.system_prompt,
+            claude_tool_effort=request.claude_tool_effort,
+        )
+        result = agent.invoke({
+            "messages": [{"role": "user", "content": request.message}],
+        })
+    except Exception as e:
+        logger.error("Hermes Deep Agent 调用失败: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    messages = result.get("messages", [])
+    last_ai = ""
+    for m in reversed(messages):
+        if isinstance(m, AIMessage) or (
+            isinstance(m, dict) and m.get("type") == "ai"
+        ):
+            content = m.content if hasattr(m, "content") else m.get("content", "")
+            if content:
+                last_ai = content
+                break
+
+    return DeepAgentResponse(content=str(last_ai), mode=request.mode)
+
+
+@app.post("/hermes-agent/deep/stream")
+def hermes_agent_deep_stream(request: HermesDeepAgentRequest):
+    """流式 Hermes + Deep Agent 编排（SSE）。
+
+    实时推送编排过程中产生的消息。
+    """
+    try:
+        from hermes_agent import create_hermes_agent
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="需要安装 deepagents 和 hermes-agent 依赖",
+        )
+
+    def event_generator():
+        try:
+            agent = create_hermes_agent(
+                mode=request.mode,
+                base_url=request.base_url,
+                api_key=request.api_key,
+                hermes_model=request.hermes_model,
+                working_dir=request.working_dir,
+                system_prompt=request.system_prompt,
+                claude_tool_effort=request.claude_tool_effort,
+            )
+            for chunk, _metadata in agent.stream(
+                {"messages": [{"role": "user", "content": request.message}]},
+                stream_mode="messages",
+            ):
+                content = chunk.content if hasattr(chunk, "content") else ""
+                if content and isinstance(content, str):
+                    yield f"data: {json.dumps({'type': 'delta', 'content': content})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'mode': request.mode})}\n\n"
+        except Exception as e:
+            logger.error("Hermes Deep Agent 流式调用失败: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 会话管理
 # ═══════════════════════════════════════════════════════════════
 
 
 @app.delete("/sessions/{session_id}")
 def delete_session(session_id: str):
-    """删除指定会话，释放资源。"""
+    """删除指定会话，释放资源（同时检查 /chat 和 /hermes-agent）。"""
+    deleted = False
     if session_id in _sessions:
         del _sessions[session_id]
-        return {"status": "deleted", "session_id": session_id}
-    raise HTTPException(status_code=404, detail="会话不存在")
+        deleted = True
+    if session_id in _hermes_sessions:
+        del _hermes_sessions[session_id]
+        deleted = True
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"status": "deleted", "session_id": session_id}
 
 
 @app.get("/sessions")
 def list_sessions():
-    """列出当前活跃会话。"""
+    """列出当前活跃会话（/chat 和 /hermes-agent）。"""
     return {
-        "count": len(_sessions),
-        "sessions": list(_sessions.keys()),
+        "chat_sessions": {
+            "count": len(_sessions),
+            "sessions": list(_sessions.keys()),
+        },
+        "hermes_sessions": {
+            "count": len(_hermes_sessions),
+            "sessions": list(_hermes_sessions.keys()),
+        },
     }
