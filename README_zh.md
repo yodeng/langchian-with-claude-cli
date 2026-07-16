@@ -12,6 +12,7 @@
   - [后端 2: Tool — `claude_code` 系列](#后端-2-tool--claude_code-系列)
   - [后端 3: Skill — `claude-code-cli`](#后端-3-skill--claude-code-cli)
 - [Deep Agent 集成](#deep-agent-集成)
+- [Hermes Agent 集成](#hermes-agent-集成)
 - [API 服务](#api-服务)
 - [vs `deep_agent`](#vs-deep_agent)
 - [完整工作流示例](#完整工作流示例)
@@ -39,6 +40,9 @@ pip install -e ".[agents]"
 
 # 使用 Deep Agent 集成
 pip install -e ".[deepagent]"
+
+# 使用 Hermes Agent 集成
+pip install -e ".[hermes]"
 
 # 运行示例
 pip install -e ".[examples]"
@@ -315,6 +319,194 @@ pip install -e ".[deepagent]"
 
 ---
 
+## Hermes Agent 集成
+
+`hermes_agent` 和 `chat_hermes_agent` 模块将 [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 一个具有记忆、学习、多平台能力的自改进 AI Agent — 集成为 LangChain 兼容的后端。
+
+### 三种集成模式
+
+| 模式 | 模块 | 说明 |
+|------|------|------|
+| **ChatModel 模式** | `chat_hermes_agent.py` | `ChatHermesAgent` 将 Hermes `AIAgent` 封装为 `BaseChatModel` 子类 — 可替代 `ChatOpenAI` |
+| **Agent 编排模式** | `hermes_agent.py` | `create_hermes_agent()` 结合 Hermes LLM 与 Claude Code 工具（通过 `deep_agent`） |
+| **Tool 模式** | `chat_hermes_agent.py` | `hermes_agent` / `hermes_agent_structured` / `hermes_agent_session` — `@tool` 函数，将单个步骤委托给 Hermes |
+
+### ChatModel 模式 — `ChatHermesAgent`
+
+```python
+from chat_hermes_agent import ChatHermesAgent
+
+llm = ChatHermesAgent(
+    base_url="http://localhost:30000/v1",
+    model="claude-opus-4-20250514",
+    working_dir=".",
+)
+
+# 单轮
+response = llm.invoke("分析项目结构")
+
+# 流式
+for chunk in llm.stream("写一个冒泡排序函数"):
+    print(chunk.content, end="", flush=True)
+
+# 多轮对话（自动 session 管理）
+llm.invoke("我叫小明")
+llm.invoke("我叫什么名字？")  # 自动记住上下文
+
+# 重置会话
+llm.reset_session()
+
+# 绑定工具
+from langchain_core.tools import tool
+@tool
+def get_weather(city: str) -> str:
+    """获取城市天气"""
+    return f"{city}：晴天，25°C"
+
+llm_with_tools = llm.bind_tools([get_weather])
+
+# 结构化输出
+schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+llm_structured = llm.with_structured_output(schema)
+```
+
+### Agent 编排 — `create_hermes_agent()`
+
+预设模式（与 [deep_agent](#预设模式) 一致）：
+
+```python
+from hermes_agent import create_hermes_agent
+
+# 模式 A：Hermes LLM + Claude Code 工具
+agent = create_hermes_agent(
+    base_url="http://localhost:30000/v1",
+    hermes_model="claude-opus-4-20250514",
+    mode="code_analysis",
+    working_dir=".",
+)
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "分析项目架构"}]
+})
+
+# 模式 B：纯 Hermes（不注册 Claude Code 工具）
+agent = create_hermes_agent(
+    base_url="http://localhost:30000/v1",
+    hermes_model="claude-opus-4-20250514",
+    mode="none",
+)
+
+# 模式 C：传入已配置的 ChatHermesAgent 实例
+from chat_hermes_agent import ChatHermesAgent
+llm = ChatHermesAgent(base_url="http://localhost:30000/v1")
+agent = create_hermes_agent(model=llm, mode="full_access")
+
+# 快捷函数
+from hermes_agent import (
+    create_hermes_code_analysis_agent,
+    create_hermes_code_refactor_agent,
+    create_hermes_full_access_agent,
+)
+```
+
+### Tool 模式 — `hermes_agent` / `hermes_agent_structured` / `hermes_agent_session`
+
+三个 `@tool` 函数，让 LangGraph Agent 将单个步骤委托给 Hermes Agent 执行。与 [`claude_code` 工具系列](#后端-2-tool--claude_code-系列) 概念一致。
+
+```python
+from chat_hermes_agent import (
+    hermes_agent,
+    hermes_agent_structured,
+    hermes_agent_session,
+    close_hermes_session,
+    list_hermes_sessions,
+)
+
+# ── 基础委托 ──
+result = hermes_agent.invoke({
+    "task": "分析项目架构，列出所有模块",
+    "model": "claude-opus-4-20250514",
+    "base_url": "http://localhost:30000/v1",
+})
+
+# ── 结构化提取 ──
+result = hermes_agent_structured.invoke({
+    "task": "从代码库中提取所有函数签名",
+    "output_schema": {
+        "type": "object",
+        "properties": {
+            "functions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "parameters": {"type": "array"},
+                        "return_type": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+    "base_url": "http://localhost:30000/v1",
+})
+
+# ── 多步骤会话（跨调用保持上下文） ──
+SESSION = "code-review-001"
+
+# 第一步
+r1 = hermes_agent_session.invoke({
+    "task": "分析项目结构",
+    "session_id": SESSION,
+    "base_url": "http://localhost:30000/v1",
+})
+
+# 第二步 — 继续同一会话，有上下文记忆
+r2 = hermes_agent_session.invoke({
+    "task": "基于之前的分析，检查是否有循环依赖",
+    "context": r1[:500],  # 可选：传入上一步摘要
+    "session_id": SESSION,
+    "base_url": "http://localhost:30000/v1",
+})
+
+# 清理
+close_hermes_session(SESSION)
+```
+
+#### 在 LangGraph Agent 中使用
+
+```python
+from langgraph.prebuilt import ToolNode
+from chat_hermes_agent import hermes_agent, hermes_agent_structured
+from langchain_openai import ChatOpenAI
+
+tools = [hermes_agent, hermes_agent_structured]
+llm = ChatOpenAI(model="deepseek-v4-pro").bind_tools(tools)
+
+graph = StateGraph(AgentState)
+graph.add_node("agent", agent_node)
+graph.add_node("tools", ToolNode(tools))
+```
+
+### Hermes 路径发现
+
+模块通过三种方式自动发现 Hermes Agent（按优先级）：
+
+1. **已安装包**：`pip install hermes-agent`
+2. **环境变量**：`export HERMES_HOME=/path/to/hermes-agent`
+3. **内置源码**：将 Hermes 源码放入 `tests/hermes-agent-main/`
+
+安装 `hermes` extra：
+
+```bash
+pip install -e ".[hermes]"
+```
+
+> **注意：** 使用 `ChatHermesAgent` 前需要启动 Hermes Agent（如 `hermes serve`）。
+
+函数：`ChatHermesAgent`、`create_hermes_agent()`、`create_hermes_code_analysis_agent()`、`create_hermes_code_refactor_agent()`、`create_hermes_full_access_agent()`、`hermes_agent`、`hermes_agent_structured`、`hermes_agent_session`、`close_hermes_session()`、`list_hermes_sessions()`
+
+---
+
 ## API 服务
 
 将 `ChatClaudeCode` 和 `deep_agent` 暴露为 REST API 端点。
@@ -436,6 +628,18 @@ data: {"type": "done"}
 - 用 **`deep_agent`** — 推理密集型任务：研究综述、多跳 Q&A、网页抓取、带规划/todo 的 Agent 编排。
 - 用 **`ChatClaudeCode`** — 需要真实代码执行：分析代码库、跨文件重构、执行 shell 命令、管理 git 工作流。
 - **组合使用** — 用 `create_claude_deep_agent()`（见上方 [Deep Agent 集成](#deep-agent-集成)）一行代码同时获得 `deep_agent` 编排和 Claude Code 执行能力。
+
+### `ChatHermesAgent` vs `ChatClaudeCode` vs `ChatOpenAI`
+
+| 维度 | `ChatHermesAgent` | `ChatClaudeCode` | `ChatOpenAI` |
+|------|-------------------|-------------------|--------------|
+| **后端** | Hermes AIAgent（完整 Agent） | `claude -p` 子进程 | OpenAI 兼容 API |
+| **工具调用** | Hermes 原生工具循环 | Claude Code 工具集 | LangChain 工具绑定 |
+| **记忆** | Hermes session + 学习 | `--session-id` / `--resume` | 无状态 API 调用 |
+| **流式输出** | 通过 `stream_callback` | 通过 `--output-format stream-json` | SSE / 原生流式 |
+| **技能系统** | Hermes skill 系统 | Claude Code 自定义命令 | — |
+| **多平台** | Telegram、Discord、Slack 等 | 仅 CLI | 仅 API |
+| **适合场景** | 通用 Agent + 学习能力 | 代码密集型任务 | 标准 LLM 任务 |
 
 ---
 

@@ -11,3 +11,4 @@ settings.local.json
 CLAUDE.md
 *.swp
 *.swo
+tests/hermes-agent-main/

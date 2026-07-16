@@ -12,6 +12,7 @@ Wrap [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) as LangCh
   - [Backend 2: Tool — `claude_code` Series](#backend-2-tool--claude_code-series)
   - [Backend 3: Skill — `claude-code-cli`](#backend-3-skill--claude-code-cli)
 - [Deep Agent Integration](#deep-agent-integration)
+- [Hermes Agent Integration](#hermes-agent-integration)
 - [API Server](#api-server)
 - [vs `deep_agent`](#vs-deep_agent)
 - [Complete Workflow Examples](#complete-workflow-examples)
@@ -39,6 +40,9 @@ pip install -e ".[agents]"
 
 # With deep agent integration
 pip install -e ".[deepagent]"
+
+# With Hermes agent integration
+pip install -e ".[hermes]"
 
 # With examples
 pip install -e ".[examples]"
@@ -315,6 +319,194 @@ Functions: `create_claude_deep_agent()`, `create_code_analysis_agent()`, `create
 
 ---
 
+## Hermes Agent Integration
+
+The `hermes_agent` and `chat_hermes_agent` modules integrate [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI agent with memory, learning, and multi-platform capabilities — as a LangChain-compatible backend.
+
+### Three Integration Modes
+
+| Mode | Module | Description |
+|------|--------|-------------|
+| **ChatModel** | `chat_hermes_agent.py` | `ChatHermesAgent` wraps Hermes `AIAgent` as a `BaseChatModel` subclass — drop-in replacement for `ChatOpenAI` |
+| **Agent Orchestration** | `hermes_agent.py` | `create_hermes_agent()` combines Hermes LLM with Claude Code tools via `deep_agent` |
+| **Tool** | `chat_hermes_agent.py` | `hermes_agent` / `hermes_agent_structured` / `hermes_agent_session` — `@tool` functions that delegate individual steps to Hermes |
+
+### ChatModel Mode — `ChatHermesAgent`
+
+```python
+from chat_hermes_agent import ChatHermesAgent
+
+llm = ChatHermesAgent(
+    base_url="http://localhost:30000/v1",
+    model="claude-opus-4-20250514",
+    working_dir=".",
+)
+
+# Single turn
+response = llm.invoke("Analyze the project structure")
+
+# Streaming
+for chunk in llm.stream("Write a bubble sort function"):
+    print(chunk.content, end="", flush=True)
+
+# Multi-turn (automatic session management)
+llm.invoke("My name is Alice")
+llm.invoke("What's my name?")  # remembers context
+
+# Reset session
+llm.reset_session()
+
+# Bind tools
+from langchain_core.tools import tool
+@tool
+def get_weather(city: str) -> str:
+    """Get weather for a city"""
+    return f"Sunny, 25°C in {city}"
+
+llm_with_tools = llm.bind_tools([get_weather])
+
+# Structured output via JSON schema
+schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+llm_structured = llm.with_structured_output(schema)
+```
+
+### Agent Orchestration — `create_hermes_agent()`
+
+Preset modes (same as [deep_agent](#preset-modes)):
+
+```python
+from hermes_agent import create_hermes_agent
+
+# Mode A: Hermes LLM + Claude Code tools
+agent = create_hermes_agent(
+    base_url="http://localhost:30000/v1",
+    hermes_model="claude-opus-4-20250514",
+    mode="code_analysis",
+    working_dir=".",
+)
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "Analyze project architecture"}]
+})
+
+# Mode B: Pure Hermes (no Claude Code tools)
+agent = create_hermes_agent(
+    base_url="http://localhost:30000/v1",
+    hermes_model="claude-opus-4-20250514",
+    mode="none",
+)
+
+# Mode C: Pass a pre-configured ChatHermesAgent instance
+from chat_hermes_agent import ChatHermesAgent
+llm = ChatHermesAgent(base_url="http://localhost:30000/v1")
+agent = create_hermes_agent(model=llm, mode="full_access")
+
+# Shortcut functions
+from hermes_agent import (
+    create_hermes_code_analysis_agent,
+    create_hermes_code_refactor_agent,
+    create_hermes_full_access_agent,
+)
+```
+
+### Tool Mode — `hermes_agent` / `hermes_agent_structured` / `hermes_agent_session`
+
+Three `@tool` functions that let a LangGraph Agent delegate individual steps to Hermes Agent. Same concept as the [`claude_code` tool series](#backend-2-tool--claude_code-series).
+
+```python
+from chat_hermes_agent import (
+    hermes_agent,
+    hermes_agent_structured,
+    hermes_agent_session,
+    close_hermes_session,
+    list_hermes_sessions,
+)
+
+# ── Basic delegation ──
+result = hermes_agent.invoke({
+    "task": "Analyze the project architecture and list all modules",
+    "model": "claude-opus-4-20250514",
+    "base_url": "http://localhost:30000/v1",
+})
+
+# ── Structured extraction ──
+result = hermes_agent_structured.invoke({
+    "task": "Extract all function signatures from the codebase",
+    "output_schema": {
+        "type": "object",
+        "properties": {
+            "functions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "parameters": {"type": "array"},
+                        "return_type": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+    "base_url": "http://localhost:30000/v1",
+})
+
+# ── Multi-step session (context preserved across calls) ──
+SESSION = "code-review-001"
+
+# Step 1
+r1 = hermes_agent_session.invoke({
+    "task": "Analyze the project structure",
+    "session_id": SESSION,
+    "base_url": "http://localhost:30000/v1",
+})
+
+# Step 2 — continues in the same session (context is preserved)
+r2 = hermes_agent_session.invoke({
+    "task": "Based on the previous analysis, check for circular dependencies",
+    "context": r1[:500],  # Optional: pass summary from previous step
+    "session_id": SESSION,
+    "base_url": "http://localhost:30000/v1",
+})
+
+# Clean up
+close_hermes_session(SESSION)
+```
+
+#### Using in a LangGraph Agent
+
+```python
+from langgraph.prebuilt import ToolNode
+from chat_hermes_agent import hermes_agent, hermes_agent_structured
+from langchain_openai import ChatOpenAI
+
+tools = [hermes_agent, hermes_agent_structured]
+llm = ChatOpenAI(model="deepseek-v4-pro").bind_tools(tools)
+
+graph = StateGraph(AgentState)
+graph.add_node("agent", agent_node)
+graph.add_node("tools", ToolNode(tools))
+```
+
+### Hermes Path Discovery
+
+The modules auto-discover Hermes Agent via three methods (in priority order):
+
+1. **Installed package**: `pip install hermes-agent`
+2. **Environment variable**: `export HERMES_HOME=/path/to/hermes-agent`
+3. **Bundled source**: Place Hermes source in `tests/hermes-agent-main/`
+
+Install with the `hermes` extra:
+
+```bash
+pip install -e ".[hermes]"
+```
+
+> **Note:** Hermes Agent must be running (e.g., via `hermes serve`) for `ChatHermesAgent` to connect.
+
+Functions: `ChatHermesAgent`, `create_hermes_agent()`, `create_hermes_code_analysis_agent()`, `create_hermes_code_refactor_agent()`, `create_hermes_full_access_agent()`, `hermes_agent`, `hermes_agent_structured`, `hermes_agent_session`, `close_hermes_session()`, `list_hermes_sessions()`
+
+---
+
 ## API Server
 
 Expose `ChatClaudeCode` and `deep_agent` as REST API endpoints.
@@ -436,6 +628,18 @@ Both `langchain-with-claude-cli` and LangChain's [`deep_agent`](https://docs.lan
 - Use **`deep_agent`** when your task is reasoning-heavy — research synthesis, multi-hop Q&A, web scraping, or agent orchestration with planning/todo lists.
 - Use **`ChatClaudeCode`** when your task needs real code execution — analyzing a codebase, refactoring across files, running shell commands, or managing a git workflow.
 - **Combine both**: use `create_claude_deep_agent()` (see [Deep Agent Integration](#deep-agent-integration) above) to get `deep_agent` orchestration with Claude Code execution in a single function call.
+
+### `ChatHermesAgent` vs `ChatClaudeCode` vs `ChatOpenAI`
+
+| Dimension | `ChatHermesAgent` | `ChatClaudeCode` | `ChatOpenAI` |
+|-----------|-------------------|-------------------|--------------|
+| **Backend** | Hermes AIAgent (full agent) | `claude -p` subprocess | OpenAI-compatible API |
+| **Tool calling** | Hermes native tool loop | Claude Code tools | LangChain tool binding |
+| **Memory** | Hermes session + learning | `--session-id` / `--resume` | Stateless API calls |
+| **Streaming** | Via `stream_callback` | Via `--output-format stream-json` | SSE/Native streaming |
+| **Skills** | Hermes skill system | Claude Code custom commands | — |
+| **Multi-platform** | Telegram, Discord, Slack, etc. | CLI only | API only |
+| **Best for** | General-purpose agent with learning | Code-focused tasks | Standard LLM tasks |
 
 ---
 
